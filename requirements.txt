@@ -1,0 +1,4 @@
+streamlit
+dashscope
+langchain-community
+faiss-cpu
