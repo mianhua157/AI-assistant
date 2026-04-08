@@ -1,27 +1,38 @@
-# AI-assistant
-LLM-based course QA system (RAG)
-AI Course Assistant (LLM + RAG)
+📚 AI Course Assistant (RAG + LLM)
+
+An AI-powered course assistant system based on Large Language Models (LLM), designed to answer machine learning course questions using Retrieval-Augmented Generation (RAG).
+
+---
 
 📌 Project Overview
-This project is an AI-powered course assistant system based on Large Language Models (LLM), designed to answer course-related questions using Retrieval-Augmented Generation (RAG).
+
+This project implements a complete RAG (Retrieval-Augmented Generation) pipeline for course question answering.
+
+It retrieves relevant content from lecture materials using semantic search, and generates accurate answers with an LLM. The system also includes fallback mechanisms to ensure robustness when retrieval fails.
 
 🚀 Features
-- Semantic retrieval using embeddings
-- RAG-based question answering
-- Prompt optimization for better response quality
+
+🔍 Semantic retrieval using embeddings (vector search)
+🧠 RAG-based question answering (Retrieval + Generation)
+✏️ Query rewriting to improve retrieval quality
+🛡️ Fallback mechanism for low-quality retrieval results
+🌐 English materials → Chinese answers (translation support)
+💻 Interactive UI built with Streamlit
+⚡ Caching for repeated queries
 
 🧠 Tech Stack
+
 - Python
-- OpenAI API / HuggingFace
-- Embedding-based retrieval
-- (Optional: FAISS)
+- Streamlit (UI)
+- DashScope API (LLM: Qwen)
+- FAISS (vector store)
+- LangChain (retrieval pipeline)
 
 ⚙️ Pipeline
-User Query → Retrieval → Re-ranking → LLM Generation
 
-📊 Example
-Q: What is overfitting?
-A: Overfitting refers to...
+User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
 
-📎 Notes
-This project demonstrates the ability to build LLM-based applications with a complete NLP pipeline.
+📁 Project Structure
+
+- `app.py`: Streamlit-based frontend interface, handles user input and displays answers  
+- `rag.py`: Core RAG pipeline, including query rewriting, retrieval, fallback mechanism, and LLM generation  
