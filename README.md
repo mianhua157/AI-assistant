@@ -2,15 +2,12 @@
 
 An AI-powered course assistant system based on Large Language Models (LLM), designed to answer machine learning course questions using Retrieval-Augmented Generation (RAG).
 
----
-
 ## 📌 Project Overview
 
 This project implements a complete RAG (Retrieval-Augmented Generation) pipeline for course question answering.
 
 It retrieves relevant content from lecture materials using semantic search, and generates accurate answers with an LLM. The system also includes fallback mechanisms to ensure robustness when retrieval fails.
 
----
 
 ## 🚀 Features
 
@@ -22,7 +19,6 @@ It retrieves relevant content from lecture materials using semantic search, and 
 - 💻 Interactive UI built with Streamlit
 - ⚡ Caching for repeated queries
 
----
 
 ## 🧰 Tech Stack
 
@@ -33,7 +29,6 @@ It retrieves relevant content from lecture materials using semantic search, and 
 - LangChain (retrieval pipeline)
 - Sentence-Transformers (embedding model)
 
----
 
 ## ⚙️ Pipeline
 
@@ -41,7 +36,6 @@ It retrieves relevant content from lecture materials using semantic search, and 
 User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
 ```
 
----
 
 ## 📁 Project Structure
 
@@ -62,7 +56,6 @@ pdf_ai_project/
 The embedding model will be automatically downloaded on first run (~90MB).  
 Please wait for the download to complete.
 
----
 
 ## 🔑 API Key Setup
 
