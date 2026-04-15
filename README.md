@@ -1,163 +1,97 @@
-# 机器学习 RAG 问答系统
+# 📄 RAG PDF QA System
+🚀 A complete RAG system with local embedding + FAISS retrieval + LLM generation
+An AI-powered course assistant system based on Large Language Models (LLM), designed to answer machine learning course questions using Retrieval-Augmented Generation (RAG).
 
-一个基于课程讲义资料的机器学习 RAG（检索增强生成）问答系统，支持英文资料检索与中文回答。
+## 📌 Project Overview
 
-## 项目结构
+This project implements a complete RAG (Retrieval-Augmented Generation) pipeline for course question answering.
+
+It retrieves relevant content from lecture materials using semantic search, and generates accurate answers with an LLM. The system also includes fallback mechanisms to ensure robustness when retrieval fails.
+
+
+## 🚀 Features
+
+- 🔍 Semantic retrieval using embeddings (vector search)
+- 🧠 RAG-based question answering (Retrieval + Generation)
+- ✏️ Query rewriting to improve retrieval quality
+- 🛡️ Fallback mechanism for low-quality retrieval results
+- 🌐 English materials → Chinese answers (translation support)
+- 💻 Interactive UI built with Streamlit
+- ⚡ Caching for repeated queries
+
+
+## 🧰 Tech Stack
+
+- Python
+- Streamlit (UI)
+- DashScope API (LLM: Qwen)
+- FAISS (vector store)
+- LangChain (retrieval pipeline)
+- Sentence-Transformers (embedding model)
+
+
+## ⚙️ Pipeline
+
+```text
+User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
+```
+
+
+## 📁 Project Structure
 
 ```
 pdf_ai_project/
-├── app.py                 # Streamlit 应用主入口
-├── rag.py                 # RAG 核心逻辑（检索 + 生成）
-├── rebuild_faiss.py       # FAISS 索引重建脚本
-├── requirements.txt       # Python 依赖
-├── .env.example           # 环境变量示例
-├── .gitignore
-└── faiss_index/           # 向量数据库（FAISS 索引）
-    ├── index.faiss
-    └── index.pkl
+├── app.py                # Streamlit frontend
+├── rag.py                # Core RAG logic
+├── rebuild_faiss.py      # Rebuild vector index
+├── requirements.txt
+├── faiss_index/
+└── README.md
 ```
 
-## 快速开始
+---
 
-### 前置要求
+## ⚠️ First Run Notice
 
-- Python 3.9+
-- DashScope API Key（通义千问）
+The embedding model will be automatically downloaded on first run (~90MB).  
+Please wait for the download to complete.
 
-### 1. API Key 设置
 
-本项目使用 DashScope 作为大语言模型后端，需要先获取 API Key：
+## 🔑 API Key Setup
 
-**获取地址：** https://dashscope.console.aliyun.com/apiKey
+This project relies on DashScope for large language model inference.  
+Please configure your API key before running the application.
 
-#### Windows (PowerShell)
-
-```powershell
-# 临时设置（当前终端会话）
-$env:DASHSCOPE_API_KEY="sk-your-key"
+```Windows (CMD)
+set DASHSCOPE_API_KEY=your_api_key
 ```
 
-#### Windows (CMD)
-
-```cmd
-set DASHSCOPE_API_KEY=sk-your-key
+## 🚀 Getting Started
+1. Clone the repository
 ```
-
-#### Linux / macOS
-
-```bash
-export DASHSCOPE_API_KEY="sk-your-key"
-```
-
-#### 永久设置（推荐）
-
-复制 `.env.example` 为 `.env` 并填入你的 API Key：
-
-```bash
-cp .env.example .env
-```
-
-然后编辑 `.env` 文件，填入 `DASHSCOPE_API_KEY`。
-
-### 2. 环境准备
-
-#### 克隆仓库
-
-```bash
-git clone <repository-url>
+git clone <your-repo-url>
 cd pdf_ai_project
 ```
-
-#### 安装依赖
-
-```bash
+2. Install dependencies
+```
 pip install -r requirements.txt
 ```
-
-### 3. 运行应用
-
-```bash
+3. Run the application
+```
 streamlit run app.py
 ```
 
-### 4. 重建 FAISS 索引（可选）
-
-如果你需要更新 PDF 数据或更改 embedding 模型：
-
-```bash
+## 🔄 Rebuild FAISS Index (Optional)
+If you update your PDF data or change the embedding model:
+```Bash
 python rebuild_faiss.py
 ```
 
----
+## 💡 Future Improvements
+Multi-document upload support
+Chat history memory
+Streaming output
+Web deployment
 
-## Bug 修复总结
-
-### 问题
-
-运行时出现 `AssertionError: assert d == self.d` 错误。
-
-### 原因
-
-1. **Embedding 维度不匹配**：原 FAISS 索引为 1536 维，代码使用 384 维模型
-2. **LangChain FAISS 兼容性 Bug**：新版本 `langchain-community` 存在内部断言错误
-
-### 解决方案
-
-1. 使用本地 `sentence-transformers/all-MiniLM-L6-v2` 模型（384 维）重新构建 FAISS 索引
-2. 重写检索器，绕过 LangChain 兼容性问题
-
-### 修改文件
-
-| 文件 | 修改说明 |
-|------|----------|
-| `rag.py` | 重写 embedding 和检索逻辑 |
-| `rebuild_faiss.py` | 新建 FAISS 索引重建脚本 |
-| `requirements.txt` | 更新依赖包 |
-| `faiss_index/` | 重建为 384 维本地模型索引 |
-
----
-
-## 使用指南
-
-### 示例问题
-
-系统内置了以下示例问题供参考：
-
-- What is regression?
-- What is classification?
-- What is overfitting?
-- What is k-nearest neighbor?
-- What is decision tree?
-
-### 功能特点
-
-- 支持英文问题输入
-- 中文回答输出
-- 检索结果引用来源标注
-- 问题关键词高亮显示
-- 回答缓存机制
-
----
-
-## 依赖
-
-- **streamlit**: Web 应用框架
-- **dashscope**: 通义千问 API
-- **sentence-transformers**: 本地 Embedding 模型（384 维）
-- **PyPDF2**: PDF 文本提取
-- **faiss-cpu**: 向量相似度搜索
-
----
-
-## 未来改进
-
-- [ ] 支持更多嵌入模型选项
-- [ ] 增加 Web UI 配置界面
-- [ ] 支持多轮对话
-- [ ] 添加评估指标
-
----
-
-## 联系方式
-
-如有问题，请提交 Issue 或联系开发者。
+## 📬 Contact
+1572408266@qq.com
