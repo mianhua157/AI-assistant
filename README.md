@@ -77,7 +77,8 @@ set DASHSCOPE_API_KEY=your_api_key
 ```
 
 ## 🚀 Getting Started
-```1. Clone the repository
+1. Clone the repository
+```
 git clone <your-repo-url>
 cd pdf_ai_project
 ```
