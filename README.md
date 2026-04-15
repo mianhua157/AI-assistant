@@ -1,5 +1,5 @@
 # 📄 RAG PDF QA System
-
+🚀 A complete RAG system with local embedding + FAISS retrieval + LLM generation
 An AI-powered course assistant system based on Large Language Models (LLM), designed to answer machine learning course questions using Retrieval-Augmented Generation (RAG).
 
 ## 📌 Project Overview
