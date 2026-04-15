@@ -55,3 +55,23 @@ pdf_ai_project/
 └── README.md
 ```
 
+---
+
+## ⚠️ First Run Notice
+
+The embedding model will be automatically downloaded on first run (~90MB).  
+Please wait for the download to complete.
+
+---
+
+## 🔑 API Key Setup
+
+This project relies on DashScope for large language model inference.  
+Please configure your API key before running the application.
+
+### Windows (PowerShell)
+
+```powershell
+$env:DASHSCOPE
+```
+Windows (CMD)
