@@ -69,9 +69,21 @@ Please wait for the download to complete.
 This project relies on DashScope for large language model inference.  
 Please configure your API key before running the application.
 
-### Windows (PowerShell)
-
 ```powershell
 $env:DASHSCOPE
 ```
-Windows (CMD)
+```Windows (CMD)
+set DASHSCOPE_API_KEY=your_api_key
+```
+
+## 🚀 Getting Started
+```1. Clone the repository
+git clone <your-repo-url>
+cd pdf_ai_project
+```
+```2. Install dependencies
+pip install -r requirements.txt
+```
+```3. Run the application
+streamlit run app.py
+```
