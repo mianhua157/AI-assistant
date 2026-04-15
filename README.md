@@ -82,9 +82,17 @@ set DASHSCOPE_API_KEY=your_api_key
 git clone <your-repo-url>
 cd pdf_ai_project
 ```
-```2. Install dependencies
+2. Install dependencies
+```
 pip install -r requirements.txt
 ```
-```3. Run the application
+3. Run the application
+```
 streamlit run app.py
+```
+
+## 🔄 Rebuild FAISS Index (Optional)
+If you update your PDF data or change the embedding model:
+```Bash
+python rebuild_faiss.py
 ```
