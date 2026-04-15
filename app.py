@@ -20,6 +20,7 @@ st.set_page_config(
 # 标题和说明
 st.title("📚 机器学习 RAG 问答系统")
 st.caption("一个基于课程讲义资料的机器学习 RAG 问答系统，支持英文资料检索与中文回答。")
+st.info("💡 Loading embedding model, first run may take a while...")
 
 # 侧边栏 - 示例问题
 st.sidebar.markdown("**示例问题：**")
