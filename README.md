@@ -45,6 +45,7 @@ User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generati
 
 ## 📁 Project Structure
 
+```
 pdf_ai_project/
 ├── app.py                # Streamlit frontend
 ├── rag.py                # Core RAG logic
@@ -52,5 +53,5 @@ pdf_ai_project/
 ├── requirements.txt
 ├── faiss_index/
 └── README.md
-
+```
 
