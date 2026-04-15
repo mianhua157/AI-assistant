@@ -39,6 +39,7 @@ It retrieves relevant content from lecture materials using semantic search, and 
 
 ```text
 User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
+```
 
 ---
 
