@@ -1,0 +1,5 @@
+streamlit
+dashscope
+sentence-transformers
+PyPDF2
+faiss-cpu
