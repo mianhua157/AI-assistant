@@ -69,9 +69,6 @@ Please wait for the download to complete.
 This project relies on DashScope for large language model inference.  
 Please configure your API key before running the application.
 
-```powershell
-$env:DASHSCOPE
-```
 ```Windows (CMD)
 set DASHSCOPE_API_KEY=your_api_key
 ```
@@ -96,3 +93,12 @@ If you update your PDF data or change the embedding model:
 ```Bash
 python rebuild_faiss.py
 ```
+
+## 💡 Future Improvements
+Multi-document upload support
+Chat history memory
+Streaming output
+Web deployment
+
+## 📬 Contact
+1572408266@qq.com
