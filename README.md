@@ -36,3 +36,30 @@ User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generati
 
 - `app.py`: Streamlit-based frontend interface, handles user input and displays answers  
 - `rag.py`: Core RAG pipeline, including query rewriting, retrieval, fallback mechanism, and LLM generation  
+
+⚠️ First Run Notice
+
+The embedding model will be automatically downloaded on first run (~90MB).  
+Please wait for the download to complete.
+
+🔑 API Key 配置
+
+This project relies on DashScope for large language model inference. Please configure your API key before running the application.
+
+### Windows（PowerShell）：
+$env:DASHSCOPE_API_KEY="your_api_key"
+
+### Windows（CMD）：
+set DASHSCOPE_API_KEY=your_api_key
+
+🚀 Getting Started
+1. Clone the repository
+### Windows（CMD）：
+git clone <your-repo-url>
+cd pdf_ai_project
+2. Install dependencies
+### Windows（CMD）：
+pip install -r requirements.txt
+3. Run the application
+### Windows（CMD）：
+streamlit run app.py
