@@ -38,61 +38,74 @@ Each concept is converted into a structured markdown page with:
 
 Instead of naive top-k retrieval:
 
-- Query Rewrite
+- Query Rewrite:
 English → Chinese / bilingual query
-- Dynamic k
-Definition: k=3
+- Dynamic k:
+Definition: k=3,
 Comparison: k=8
-- Document Selection
-Definition → 1 wiki + optional raw
+- Document Selection:
+Definition → 1 wiki + optional raw, 
 Comparison → 2 wiki + raw supplement
 
 👉 Enables precision + coverage balance
-```
 
----
+### 4️⃣ Task-aware Prompt Engineering
 
-## ⚠️ First Run Notice
+Different prompts for different question types:
 
-The embedding model will be automatically downloaded on first run (~90MB).  
-Please wait for the download to complete.
+Definition: concise, no expansion
+
+Comparison: structured, table output
+
+Fallback: allow controlled knowledge completion
+
+### 5️⃣ Token Optimization
+
+- Reduced chunk size (800 → 500)
+- Limited wiki generation (33 → 3 topics)
+- Context truncation (600 chars/doc)
+- Dynamic retrieval size
+
+👉 ~70%+ token reduction
 
 
-## 🔑 API Key Setup
+## 🏗️ System Architecture
 
-This project relies on DashScope for large language model inference.  
-Please configure your API key before running the application.
+User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Retrieval → LLM Generation → Structured Answer
 
-```Windows (CMD)
-set DASHSCOPE_API_KEY=your_api_key
-```
+## 📂 Project Structure
+pdf_ai_project/
+├── raw/                    # Original PDFs
+├── wiki/                   # Structured knowledge base
+├── faiss_index/            # Vector database
+├── build_wiki.py           # Generate wiki pages
+├── build_vectorstore.py    # Build vector DB
+├── rag.py                  # Retrieval + generation logic
+├── app.py                  # Streamlit UI
+└── .env                    # API keys
 
-## 🚀 Getting Started
-1. Clone the repository
-```
-git clone <your-repo-url>
-cd pdf_ai_project
-```
-2. Install dependencies
-```
-pip install -r requirements.txt
-```
-3. Run the application
-```
-streamlit run app.py
-```
+## ▶️ How to Run
+ Step 1: Generate wiki knowledge python build_wiki.py  \\
+ Step 2: Build vector database python build_vectorstore.py//
+ Step 3: Launch app streamlit run app.py
 
-## 🔄 Rebuild FAISS Index (Optional)
-If you update your PDF data or change the embedding model:
-```Bash
-python rebuild_faiss.py
-```
+## 📊 Example Capabilities
+✔ Definition questions
+✔ Concept comparison
+✔ Cross-language queries
+✔ Structured explanations
 
-## 💡 Future Improvements
-Multi-document upload support
-Chat history memory
-Streaming output
-Web deployment
+## 💡 Highlights
+Hybrid retrieval improves answer accuracy
+Controlled pipeline avoids irrelevant context
+Task-aware generation improves readability
+Engineering-focused optimization (token, latency)
+
+## 🧠 Future Improvements
+Reranker integration (e.g. cross-encoder)
+Better source filtering
+Multi-hop reasoning
+Evaluation metrics (EM / F1)
 
 ## 📬 Contact
 1572408266@qq.com
