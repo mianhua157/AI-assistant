@@ -82,7 +82,7 @@ User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Re
 ```
 
 ## 📂 Project Structure
-```
+```bash
 pdf_ai_project/
 ├── raw/                    # Original PDFs
 ├── wiki/                   # Structured knowledge base
