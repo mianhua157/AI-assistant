@@ -1,36 +1,27 @@
-# 📄 RAG PDF QA System
+# 🧠 Hybrid RAG System for Machine Learning Q&A
 🚀 A complete RAG system with local embedding + FAISS retrieval + LLM generation
 An AI-powered course assistant system based on Large Language Models (LLM), designed to answer machine learning course questions using Retrieval-Augmented Generation (RAG).
 
 ## 📌 Project Overview
 
-This project implements a complete RAG (Retrieval-Augmented Generation) pipeline for course question answering.
+This project implements a hybrid Retrieval-Augmented Generation (RAG) system for machine learning question answering.
 
-It retrieves relevant content from lecture materials using semantic search, and generates accurate answers with an LLM. The system also includes fallback mechanisms to ensure robustness when retrieval fails.
+Unlike basic RAG pipelines, this system introduces:
 
-
-## 🚀 Features
-
-- 🔍 Semantic retrieval using embeddings (vector search)
-- 🧠 RAG-based question answering (Retrieval + Generation)
-- ✏️ Query rewriting to improve retrieval quality
-- 🛡️ Fallback mechanism for low-quality retrieval results
-- 🌐 English materials → Chinese answers (translation support)
-- 💻 Interactive UI built with Streamlit
-- ⚡ Caching for repeated queries
+- Hybrid Knowledge Base (PDF + Structured Wiki)
+- Controlled Retrieval Strategy
+- Query Rewriting (EN ↔ CN)
+- Task-aware Generation (Definition vs Comparison)
 
 
-## 🧰 Tech Stack
+### 1️⃣ Hybrid Knowledge Base
 
-- Python
-- Streamlit (UI)
-- DashScope API (LLM: Qwen)
-- FAISS (vector store)
-- LangChain (retrieval pipeline)
-- Sentence-Transformers (embedding model)
+- 📄 Raw PDFs → complete but noisy
+- 📖 Wiki Pages → structured, LLM-generated summaries
 
+👉 Combined into a unified vector store
 
-## ⚙️ Pipeline
+### 2️⃣ Structured Wiki Generation
 
 ```text
 User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
