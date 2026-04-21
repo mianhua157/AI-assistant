@@ -82,6 +82,7 @@ User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Re
 ```
 
 ## 📂 Project Structure
+```
 pdf_ai_project/
 ├── raw/                    # Original PDFs
 ├── wiki/                   # Structured knowledge base
@@ -91,7 +92,7 @@ pdf_ai_project/
 ├── rag.py                  # Retrieval + generation logic
 ├── app.py                  # Streamlit UI
 └── .env                    # API keys
-
+```
 ## ▶️ How to Run
 
  Step 1: Generate wiki knowledge python build_wiki.py  
