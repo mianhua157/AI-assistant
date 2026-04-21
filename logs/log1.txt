@@ -1,0 +1,579 @@
+# RAG 系统构建流程说明
+
+## 整体架构
+
+```
+用户问题 → 检索 → 生成回答
+           ↑
+    向量知识库 (FAISS)
+           ↑
+    PDF + Wiki 文档
+```
+
+---
+
+## 构建流程
+
+### 第一步：build_wiki.py - 生成概念知识库
+
+**目的**：从原始 PDF 中提取核心概念，生成结构化的 markdown 知识页
+
+**输入**：
+- `classification.pdf`（原始课程讲义）
+
+**处理**：
+1. 读取 PDF 全文
+2. 对每个预定义概念（classification, logistic regression, knn, decision tree, naive bayes, lda, svm）
+3. 调用 LLM 生成结构化 markdown 页面
+
+**输出**：
+- `wiki/classification.md`
+- `wiki/logistic_regression.md`
+- `wiki/k-nearest_neighbor.md`
+- `wiki/decision_tree.md`
+- `wiki/naive_bayes.md`
+- `wiki/linear_discriminant_analysis.md`
+- `wiki/support_vector_machine.md`
+
+**意义**：这是第二层知识库，将分散在 PDF 中的概念整理成结构化页面
+
+---
+
+### 第二步：build_vectorstore.py - 构建向量数据库
+
+**目的**：将 PDF 原始文档和 Wiki 概念页统一向量化存储
+
+**输入**：
+- `raw/*.pdf` - 原始 PDF 文档
+- `wiki/*.md` - 生成的概念知识页
+
+**处理**：
+1. 加载 PDF 文档（标记 type="raw_pdf"）
+2. 加载 Wiki markdown（标记 type="wiki"）
+3. 合并两类文档
+4. 切分为 chunk（800 字符/块，重叠 150）
+5. 使用 embedding 模型生成向量
+6. 保存到 FAISS 索引
+
+**输出**：
+- `faiss_index/index.faiss` - 向量索引
+- `faiss_index/index.pkl` - 文档存储
+
+**意义**：混合知识库，同时包含原始资料和结构化概念
+
+---
+
+### 第三步：rag.py - 检索与生成
+
+**目的**：用户提问时，从向量库检索并生成回答
+
+**流程**：
+1. 用户输入问题
+2. 生成问题的 embedding
+3. 在 FAISS 中检索最相似的 chunk
+4. 将检索结果 + 问题输入 LLM
+5. 生成最终回答
+
+---
+
+## 目录结构
+
+```
+pdf_ai_project/
+├── raw/                    # 原始 PDF 目录
+│   └── classification.pdf
+├── wiki/                   # 生成的概念知识库
+│   ├── classification.md
+│   ├── logistic_regression.md
+│   └── ...
+├── faiss_index/            # 向量数据库
+│   ├── index.faiss
+│   └── index.pkl
+├── build_wiki.py           # 第一步：生成 wiki
+├── build_vectorstore.py    # 第二步：构建向量库
+├── app.py                  # Streamlit 前端
+├── rag.py                  # RAG 核心逻辑
+└── .env                    # API Key 配置
+```
+
+---
+
+## 关键改进
+
+1. **双层知识结构**：原始 PDF + 结构化 Wiki
+2. **元数据标记**：每个文档标记来源类型，便于追踪
+3. **统一向量化**：PDF 和 Wiki 使用相同 embedding，可混合检索
+
+---
+
+## 运行顺序
+
+```bash
+# 1. 生成 wiki 概念页
+python build_wiki.py
+
+# 2. 构建向量库
+python build_vectorstore.py
+
+# 3. 启动应用
+streamlit run app.py
+```
+
+---
+
+## 工程日志
+
+### 第一阶段：Bug 修复与基础重构（2026-04-15 ~ 2026-04-16）
+
+**问题背景**：
+- 原始代码运行时报错 `AssertionError: assert d == self.d`
+- FAISS 索引维度（1536）与代码配置的 embedding 模型（384）不匹配
+- LangChain FAISS 兼容性 Bug
+
+**解决方案**：
+1. 使用本地 `sentence-transformers/all-MiniLM-L6-v2` 模型重新构建 FAISS 索引
+2. 重写检索器 `SimpleFAISSRetriever`，绕过 LangChain 兼容性问题
+3. 添加加载提示：`print("Loading embedding model (may download on first run)...")`
+
+**修改文件**：
+- `rag.py` - 重写 embedding 和检索逻辑
+- `rebuild_faiss.py` - FAISS 索引重建脚本
+- `requirements.txt` - 更新依赖包
+- `app.py` - 添加加载提示
+
+**运行结果**：
+- 从 4 个 PDF 文件提取 346 个文本块
+- 生成 384 维 embeddings
+- FAISS 索引重建成功
+
+---
+
+### 第二阶段：双层知识库构建（2026-04-18）
+
+#### 第一步：生成 Wiki 概念页
+
+**运行脚本**：`python build_wiki.py`
+
+**运行日志**：
+```
+正在读取 PDF: classification.pdf
+PDF 读取完成，总长度：33477 字符
+
+开始生成 7 个概念页面...
+==================================================
+
+正在生成：classification
+已保存：wiki\classification.md
+
+正在生成：logistic regression
+已保存：wiki\logistic_regression.md
+
+正在生成：k-nearest neighbor
+已保存：wiki\k-nearest_neighbor.md
+
+正在生成：decision tree
+已保存：wiki\decision_tree.md
+
+正在生成：naive bayes
+已保存：wiki\naive_bayes.md
+
+正在生成：linear discriminant analysis
+已保存：wiki\linear_discriminant_analysis.md
+
+正在生成：support vector machine
+已保存：wiki\support_vector_machine.md
+
+==================================================
+生成完成！
+输出目录：wiki/
+```
+
+**生成文件**（7 个）：
+- wiki/classification.md (8.3KB)
+- wiki/logistic_regression.md (3.2KB)
+- wiki/k-nearest_neighbor.md (4.9KB)
+- wiki/decision_tree.md (4.6KB)
+- wiki/naive_bayes.md (2.6KB)
+- wiki/linear_discriminant_analysis.md (4.1KB)
+- wiki/support_vector_machine.md (4.3KB)
+
+---
+
+#### 第二步：构建混合向量库
+
+**运行脚本**：`python build_vectorstore.py`
+
+**运行日志**：
+```
+==================================================
+开始构建向量库
+==================================================
+
+已加载 PDF: classification.pdf
+已加载 wiki: classification.md
+已加载 wiki: decision_tree.md
+已加载 wiki: k-nearest_neighbor.md
+已加载 wiki: linear_discriminant_analysis.md
+已加载 wiki: logistic_regression.md
+已加载 wiki: naive_bayes.md
+已加载 wiki: support_vector_machine.md
+
+文档加载完成:
+  - PDF 文档数：59
+  - Wiki 文档数：7
+  - 总计：66
+
+切分完成：99 个 chunk
+
+加载 embedding 模型...
+生成 embeddings...
+构建 FAISS 索引...
+
+==================================================
+向量库已保存到：faiss_index/
+  - 向量数量：99
+  - 维度：384
+==================================================
+```
+
+**输出结果**：
+- `faiss_index/index.faiss` - 向量索引 (50KB)
+- `faiss_index/index.pkl` - 文档存储 (33KB)
+
+---
+
+### 第三阶段：混合检索改造（2026-04-20）
+
+**目标**：从"PDF + Wiki"混合向量库中检索，并显示来源类型
+
+**修改文件**：
+- `rag.py` - 添加 `format_context()` 和 `format_sources()` 函数，支持来源类型显示
+- `app.py` - 适配新的 `ask_rag()` 接口，显示来源类型标签
+
+**新增函数**：
+```python
+def format_context(docs) -> str:
+    """格式化检索结果，带上来源类型（用于 prompt）"""
+
+def format_sources(docs) -> List[dict]:
+    """格式化来源列表，包含 type 和 source 字段"""
+```
+
+**运行日志**：
+```
+Loading embedding model (may download on first run)...
+Testing retrieval...
+Retrieved 2 documents
+
+[1] Type: wiki, Source: wiki\classification.md
+    Preview: - Ensemble learning(Random Forest, AdaBoost)...
+
+[2] Type: raw_pdf, Source: raw\classification.pdf
+    Preview: Introduction Logistic Regression k-Nearest Neighbor...
+
+Test passed!
+```
+
+**前端显示效果**：
+- 📖 Wiki · `classification.md`
+- 📄 PDF · `classification.pdf`
+
+**关键改进**：
+1. 检索结果同时包含 PDF 原始内容和 Wiki 结构化知识
+2. 用户可以在前端看到每个来源的类型标识
+3. Prompt 中明确标注来源类型，帮助模型更好理解上下文
+4. `ask_rag()` 接口改为返回 `(answer, docs)` 元组，更灵活
+
+---
+
+### 第四阶段：简化 app.py（2026-04-20）
+
+**目标**：按照图片要求，简化 `app.py`，正确显示 wiki 来源
+
+**修改文件**：
+- `app.py` - 重构为简洁版本
+
+**主要改动**：
+1. 移除不必要的导入（`os`, `re`）
+2. 移除缓存机制（简化代码）
+3. 移除关键词高亮功能（简化代码）
+4. 使用 `@st.cache_resource` 缓存向量库加载
+5. 直接显示来源类型和文件路径
+
+**修改后代码**：
+```python
+import streamlit as st
+from rag import load_vectorstore, ask_rag
+
+# 加载向量库（带缓存）
+@st.cache_resource
+def get_vectorstore():
+    return load_vectorstore()
+
+vectorstore = get_vectorstore()
+
+# 输入框
+question = st.text_input("请输入你的问题：")
+
+if question:
+    with st.spinner("正在检索资料并生成回答..."):
+        answer, docs = ask_rag(question, vectorstore)
+
+    # 显示回答
+    st.subheader("回答")
+    st.write(answer)
+
+    # 显示检索到的来源
+    with st.expander("📚 检索到的来源"):
+        for i, doc in enumerate(docs):
+            st.markdown(f"**来源 {i+1}**")
+            st.write("类型：", doc.metadata.get("type", "raw"))
+            st.write("文件：", doc.metadata.get("source", "unknown"))
+            st.write(doc.page_content[:500])
+            st.markdown("---")
+```
+
+**代码简化对比**：
+| 功能 | 修改前 | 修改后 |
+|------|--------|--------|
+| 代码行数 | 114 行 | 45 行 |
+| 缓存机制 | Session State | 移除 |
+| 关键词高亮 | 有 | 移除 |
+| 来源显示 | 复杂格式化 | 简洁显示 |
+| 向量库加载 | 全局变量 | `@st.cache_resource` |
+
+---
+
+### 第五阶段：Wiki 标识增强（2026-04-20）
+
+**目标**：在 wiki 文档内容前添加 `[WIKI]` 标识，让模型更容易识别来源
+
+**修改文件**：
+- `build_vectorstore.py` - `load_wiki_documents()` 函数
+
+**修改内容**：
+```python
+# 修改前
+Document(
+    page_content=text,
+    metadata={"source": path, "type": "wiki"}
+)
+
+# 修改后
+Document(
+    page_content="[WIKI]\n" + text,
+    metadata={"source": path, "type": "wiki"}
+)
+```
+
+**运行日志**：
+```
+==================================================
+开始构建向量库
+==================================================
+
+已加载 PDF: classification.pdf
+已加载 wiki: classification.md
+已加载 wiki: decision_tree.md
+已加载 wiki: k-nearest_neighbor.md
+已加载 wiki: linear_discriminant_analysis.md
+已加载 wiki: logistic_regression.md
+已加载 wiki: naive_bayes.md
+已加载 wiki: support_vector_machine.md
+
+文档加载完成:
+  - PDF 文档数：59
+  - Wiki 文档数：7
+  - 总计：66
+
+切分完成：99 个 chunk
+向量库已保存到：faiss_index/
+  - 向量数量：99
+  - 维度：384
+==================================================
+```
+
+**作用**：
+1. 模型在看到 `[WIKI]` 标识时，能更快识别这是结构化知识
+2. 与 PDF 原始内容形成对比，帮助模型区分信息来源
+3. 在 prompt 中可以作为额外信号，优化回答质量
+
+---
+
+### 第六阶段：优化 Prompt（2026-04-20）
+
+**目标**：优化 RAG 生成的 prompt，让回答质量更高
+
+**修改文件**：
+- `rag.py` - `ask_rag()` 函数中的 prompt
+
+**修改内容**：
+```python
+# 修改前
+prompt = f"""你是一个机器学习助教，请根据提供的资料回答问题。
+
+规则：
+1. 优先使用资料内容
+2. 如果资料中有相关内容，可以做合理归纳
+3. 全部使用中文回答
+4. 在答案末尾标注参考来源编号，如 [1][2]
+5. 只有在资料明显无关时，才回答"我不知道"
+...
+"""
+
+# 修改后
+prompt = f"""你是一个机器学习助教，请根据资料回答问题。
+
+要求：
+1. 必须用自己的话总结，不要直接拼接原文
+2. 优先使用 wiki 内容进行整理
+3. 回答要结构清晰（可以分点）
+4. 必须用中文
+5. 在最后标注来源编号
+...
+"""
+```
+
+**关键改进**：
+| 修改点 | 修改前 | 修改后 |
+|--------|--------|--------|
+| 总结要求 | 无明确要求 | 必须用自己的话总结 |
+| Wiki 优先级 | 无 | 优先使用 wiki 内容 |
+| 结构要求 | 无 | 结构清晰（可以分点） |
+| 拒答机制 | 有（资料无关时） | 移除 |
+
+**预期效果**：
+1. 减少直接拼接原文的情况
+2. Wiki 结构化知识被优先使用，回答更准确
+3. 分点回答更清晰易读
+4. 移除拒答机制，减少"我不知道"的情况
+
+---
+
+### 第七阶段：提高 Wiki 权重（2026-04-20）
+
+**目标**：让 RAG 检索优先使用 Wiki 内容
+
+**方法 1：提高 Wiki 权重（检索层）**
+
+**修改文件**：
+- `rag.py` - `ask_rag()` 函数
+
+**修改内容**：
+```python
+# 修改前
+docs = vectorstore.similarity_search(question, k=5)
+
+# 修改后
+# 先检索多一些（k=8）
+docs = vectorstore.similarity_search(question, k=8)
+
+# 按类型分离
+wiki_docs = [d for d in docs if d.metadata.get("type") == "wiki"]
+raw_docs = [d for d in docs if d.metadata.get("type") != "wiki"]
+
+# 重新组合：wiki 前 2 个 + raw 前 3 个
+docs = wiki_docs[:2] + raw_docs[:3]
+```
+
+**方法 2：只改 Prompt**
+
+在 prompt 中添加：
+```
+要求：
+1. 优先使用 wiki 类型的资料
+2. 如果 wiki 有内容，尽量基于 wiki 组织答案
+```
+
+**关键改进**：
+| 方法 | 修改位置 | 效果 |
+|------|----------|------|
+| 方法 1 | 检索层 | 强制保证 wiki 文档占比 |
+| 方法 2 | Prompt | 引导模型优先使用 wiki |
+
+**调试打印**：
+
+添加两个检查打印：
+```python
+# 检查 1：打印候选池
+print("\n=== 候选池 ===")
+for i, d in enumerate(candidates):
+    print(f"{i+1} {d.metadata.get('type')} {d.metadata.get('source')}")
+
+# 检查 2：打印最终 docs
+print("\n=== 最终送入模型的 docs ===")
+for i, d in enumerate(docs):
+    print(f"{i+1} {d.metadata.get('type')} {d.metadata.get('source')}")
+```
+
+**测试结果**：
+```
+=== 候选池 ===
+1 wiki wiki\classification.md
+2 raw_pdf raw\classification.pdf
+3 raw_pdf raw\classification.pdf
+...
+
+=== 最终送入模型的 docs ===
+1 wiki wiki\classification.md
+2 raw_pdf raw\classification.pdf
+3 raw_pdf raw\classification.pdf
+4 raw_pdf raw\classification.pdf
+```
+
+**发现**：
+- 候选池里只有 1 条 wiki（不是逻辑没生效）
+- 最终 docs 正确保留了这 1 条 wiki + 3 条 raw_pdf
+
+---
+
+**预期效果**：
+1. Wiki 结构化知识被优先使用
+2. 回答更准确、更结构化
+3. 减少 PDF 中的噪声干扰
+
+---
+
+## 本次构建日志摘要
+
+| 阶段 | 内容 | 结果 |
+|------|------|------|
+| 第一阶段 | Bug 修复 + 本地 embedding | 346 个文本块，384 维 |
+| 第二阶段 - Step1 | 生成 Wiki 概念页 | 7 个 markdown 文件 |
+| 第二阶段 - Step2 | 构建混合向量库 | 99 个向量，384 维 |
+| 第三阶段 | 混合检索 + 来源显示 | PDF+Wiki 混合检索 |
+| 第四阶段 | 简化 app.py | 代码从 114 行降至 45 行 |
+| 第五阶段 | Wiki 标识增强 | 添加 [WIKI] 前缀 |
+| 第六阶段 | Prompt 优化 | 5 条新要求 |
+| 第七阶段 | 提高 Wiki 权重 | 检索层+Prompt 双重优先 |
+
+---
+
+生成时间：2026-04-18
+第三阶段更新：2026-04-20
+第四阶段更新：2026-04-20
+第五阶段更新：2026-04-20
+第六阶段更新：2026-04-20
+第七阶段更新：2026-04-20
+
+---
+
+## 本次构建日志摘要
+
+| 阶段 | 内容 | 结果 |
+|------|------|------|
+| 第一阶段 | Bug 修复 + 本地 embedding | 346 个文本块，384 维 |
+| 第二阶段 - Step1 | 生成 Wiki 概念页 | 7 个 markdown 文件 |
+| 第二阶段 - Step2 | 构建混合向量库 | 99 个向量，384 维 |
+| 第三阶段 | 混合检索 + 来源显示 | PDF+Wiki 混合检索 |
+| 第四阶段 | 简化 app.py | 代码从 114 行降至 45 行 |
+| 第五阶段 | Wiki 标识增强 | 添加 [WIKI] 前缀 |
+| 第六阶段 | Prompt 优化 | 5 条新要求 |
+
+---
+
+生成时间：2026-04-18
+第三阶段更新：2026-04-20
+第四阶段更新：2026-04-20
+第五阶段更新：2026-04-20
+第六阶段更新：2026-04-20

@@ -1,0 +1,244 @@
+# 项目日志
+
+## 2026-04-20 - RAG 检索优化
+
+### 问题背景
+当候选池里只有 1 条 wiki 时，检索效果不佳。需要增加 wiki 在向量库中的数量。
+
+### 修改内容
+
+#### 1. rag.py - 扩大候选池
+- 将 `similarity_search` 的 k 从 8 改成 15
+- 更容易从更大的候选池里捞到足够的 wiki 文档
+- 保持 `docs = wiki_docs[:2] + raw_docs[:3]` 的组合逻辑
+
+#### 2. build_vectorstore.py - Wiki 文档切分
+- 新增 `split_wiki_documents()` 函数
+- 使用 RecursiveCharacterTextSplitter 切分 wiki 文档
+- 参数：chunk_size=500, chunk_overlap=100
+- 在 `load_all_documents()` 中调用切分函数
+- 目的：增加 wiki 在向量库中的 chunk 数量，提高被检索到的概率
+
+#### 3. build_wiki.py - 优化生成 Prompt
+- 强制 wiki 内容结构，让 embedding 更"像问题"
+- 必须包含的 5 个部分：
+  1. 定义（最重要）- 用 1-2 句话清晰定义该概念
+  2. 训练过程
+  3. 预测过程
+  4. 常见方法
+  5. 与其他概念的关系
+- 避免生成"资料中未充分覆盖该主题"这样的无效内容
+
+#### 4. build_wiki.py - 通用 PDF 加载
+- 新增 `load_pdf_documents()` 函数
+- 遍历 `raw/` 目录读取所有 PDF 文件
+- 修改 `main()` 函数，从 `raw/` 目录加载所有 PDF
+- 不再硬编码单个 PDF 文件名
+
+### 预期效果
+- 向量库中 wiki chunk 数量增加
+- 检索时更容易命中 wiki 文档
+- 回答质量提升（wiki 内容更结构化）
+- build_wiki.py 可以自动读取 raw/ 下所有 PDF，更通用
+
+## 2026-04-21 - 省 token 优化 + 中英混合检索
+
+### 修改内容
+
+#### 1. build_wiki.py - 默认只生成 3 个关键 topic
+- 新增 `key_topics` 列表：`["regression", "classification vs regression", "supervised learning"]`
+- 默认只生成 3 个关键 topic（省 token 模式）
+- 支持命令行指定：`python build_wiki.py "topic1" "topic2"`
+
+#### 2. build_vectorstore.py - 控制 chunk 大小
+- `chunk_size` 从 800 降到 500
+- `chunk_overlap` 从 150 降到 100
+- 节省 token 消耗
+
+### 预期效果
+- wiki 生成 token 减少 ~90%（33 个 → 3 个）
+- 每个 chunk token 减少 ~37%
+
+## 2026-04-21 - 统一中文检索
+
+### 修改内容
+
+#### 1. rag.py - 添加 query rewrite 功能
+- 新增 `rewrite_query_to_chinese()` 函数
+  - 检测是否包含英文字母
+  - 短问题（≤5 个单词）才翻译，省 token
+  - 纯中文直接返回，不调用 API
+- 新增 `rewrite_query_bilingual()` 函数（高级版）
+  - 中英一起喂给检索：`What is classification?` → `What is classification? 什么是分类？`
+  - 好处：不丢英文信息，中文也能命中 wiki
+
+#### 2. app.py - 显示 query 重写信息
+- 侧边栏添加使用说明
+- 当英文问题时显示重写提示
+
+### 预期效果
+- 英文问题和中文问题都能准确检索
+- 统一检索语言，提高 wiki 命中率
+
+## 2026-04-21 - Wiki 优先 + 限制数量
+
+### 修改内容
+
+#### rag.py - 文档选择逻辑优化
+
+**版本 1：wiki 优先 + 限制数量**
+```python
+selected_docs = wiki_docs[:2]
+if len(selected_docs) < 2:
+    selected_docs += raw_docs[:1]
+```
+
+**版本 2：固定"1 wiki + 1 raw + 补充"**
+```python
+docs = []
+if wiki_docs:
+    docs.append(wiki_docs[0])
+if raw_docs:
+    docs.append(raw_docs[0])
+remaining = wiki_docs[1:] + raw_docs[1:]
+docs.extend(remaining[:2])
+```
+
+**版本 3：每个 doc 限制 600 字符**
+```python
+context = "\n\n".join([doc.page_content[:600] for doc in docs])
+```
+
+### 预期效果
+- 优先使用 wiki 文档
+- 保证 raw 也有代表
+- 减少 token 消耗（最多 4 个文档，每个 600 字符）
+
+## 2026-04-21 - 智能 k 值
+
+### 修改内容
+
+#### rag.py - 根据问题类型调整 k 值
+```python
+is_definition = q.startswith("what is") or q.startswith("什么是") or q.startswith("定义")
+
+if is_definition:
+    candidates = vectorstore.similarity_search(rewritten_query, k=3)
+else:
+    candidates = vectorstore.similarity_search(rewritten_query, k=6)
+```
+
+### 预期效果
+- 定义类问题更精准（k=3，减少噪声）
+- 复杂问题候选更多（k=6，保证覆盖）
+- 平均给模型 2-3 条，省 token
+
+## 2026-04-21 - 强制"只取最相关 wiki"
+
+### 修改内容
+
+#### rag.py - 按 score 排序 wiki_docs
+```python
+wiki_docs = sorted(wiki_docs, key=lambda x: x.metadata.get("score", 0), reverse=True)
+
+docs = []
+if wiki_docs:
+    docs.append(wiki_docs[0])  # 只拿 top1 wiki
+```
+
+### 预期效果
+- 避免 svm/knn 等无关 wiki 混入
+- 定义题更精准（只取 top1 wiki）
+
+## 2026-04-21 - Prompt 优化
+
+### 修改内容
+
+#### rag.py - 主 prompt
+```python
+prompt = f"""你是一个机器学习助教，请基于检索到的资料回答问题。
+
+规则：
+1. 优先使用提供的资料
+2. 如果资料不完整，可以基于你的知识进行合理补充
+3. 不要编造不存在的概念
+4. 回答要清晰、结构化
+5. 对于定义类问题，尽量简洁
+6. 对于比较或解释类问题，可以适当扩展
+
+对于"what is / 什么是"类问题：
+- 只给核心定义
+- 不要展开推导或复杂公式
+"""
+```
+
+#### rag.py - fallback prompt
+```python
+prompt = f"""你是一个机器学习助教。资料不足时，可以基于你的知识进行合理补充。
+
+规则：
+1. 不要编造不存在的概念
+2. 回答要清晰、结构化
+3. 对于定义类问题，尽量简洁
+4. 对于"what is / 什么是"类问题：只给核心定义，不要展开推导
+"""
+```
+
+### 预期效果
+- 减少"I don't know"
+- 定义题更简洁（不展开公式）
+- 比较题更充分（可扩展）
+- fallback 也能给出结构化回答
+
+## 2026-04-21 - 比较类问题优化
+
+### 修改内容
+
+#### rag.py - 智能 k 值 + 文档选择
+
+```python
+# 检测问题类型
+is_definition = q.startswith("what is") or q.startswith("什么是") or q.startswith("定义")
+is_compare = "compare" in q or "对比" in q or "比较" in q or "vs" in q or "difference" in q
+
+# 根据类型调整 k 值
+if is_definition:
+    candidates = vectorstore.similarity_search(rewritten_query, k=3)
+elif is_compare:
+    candidates = vectorstore.similarity_search(rewritten_query, k=8)  # 更多候选
+else:
+    candidates = vectorstore.similarity_search(rewritten_query, k=6)
+
+# 根据类型选择 wiki 数量
+if is_compare:
+    docs.extend(wiki_docs[:2])  # 比较类拿 2 个 wiki
+else:
+    if wiki_docs:
+        docs.append(wiki_docs[0])  # 定义类只拿 1 个
+```
+
+#### rag.py - Prompt 差异化
+- 比较类：`"比较类问题请列出两者的异同点（可以用表格或分点）"`
+- 定义类：`"只给核心定义，不要展开推导"`
+
+### 预期效果
+| 问题类型 | 示例 | k 值 | wiki 数量 |
+|----------|------|-----|-----------|
+| 定义类 | `What is classification?` | 3 | 1 |
+| 比较类 | `Compare classification and regression` | 8 | 2 |
+| 其他 | `解释一下 SVM` | 6 | 1 |
+
+- 比较类问题有 2 个 wiki 对比
+- 定义类问题更精准（不混入无关 wiki）
+- Prompt 根据类型调整回答策略
+
+### 总结 - Token 节省效果
+
+| 项目 | 修改前 | 修改后 | 节省 |
+|------|--------|--------|------|
+| chunk 大小 | 800 | 500 | ~37% |
+| wiki 生成 | 33 个 | 3 个 | ~90% |
+| context 翻译 | 调用 API | 跳过 | 100% |
+| prompt 长度 | ~150 字 | ~50 字 | ~67% |
+| 检索 k 值 | 15 | 3-8 | ~50% |
+| 每个 doc 长度 | 无限制 | 600 字符 | ~25% |
