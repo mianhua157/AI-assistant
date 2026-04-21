@@ -1,3 +1,9 @@
+"""
+rag.py - RAG 核心逻辑（检索 + 生成）
+
+支持从 PDF + Wiki 混合向量库中检索，并显示来源类型
+"""
+
 import os
 from http import HTTPStatus
 import dashscope
@@ -7,13 +13,13 @@ from pathlib import Path
 import numpy as np
 from typing import List
 
-# API 配置 - 从环境变量读取（避免硬编码泄露）
+# API 配置 - 从环境变量读取
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 if not DASHSCOPE_API_KEY:
     raise ValueError("请设置环境变量 DASHSCOPE_API_KEY")
 
 # 调试模式开关
-DEBUG = False  # 设为 True 时打印详细调试信息
+DEBUG = False
 
 
 class LocalEmbeddings:
@@ -35,7 +41,7 @@ class LocalEmbeddings:
 
 
 class SimpleFAISSRetriever:
-    """简单的 FAISS 检索器，绕过 langchain 的兼容性问题"""
+    """简单的 FAISS 检索器，支持 PDF + Wiki 混合检索"""
 
     def __init__(self, index_path="faiss_index"):
         # 加载 FAISS 索引
@@ -46,24 +52,19 @@ class SimpleFAISSRetriever:
         self.index = faiss.read_index(str(index_file))
 
         # 加载 docstore 和 index_to_docstore_id
-        # pkl 文件结构：(docstore dict, index_to_docstore_id dict)
         with open(pkl_file, "rb") as f:
             data = pickle.load(f)
             if isinstance(data, tuple) and len(data) == 2:
                 self.docstore, self.index_to_docstore_id = data
-            elif isinstance(data, dict):
-                # 兼容旧格式
-                self.docstore = data.get("_dict", {})
-                self.index_to_docstore_id = data.get("index_to_docstore_id", {})
             else:
                 self.docstore = {}
                 self.index_to_docstore_id = {}
 
-        # 使用本地 embedding 模型（384 维，和新索引一致）
+        # 使用本地 embedding 模型
         self.embeddings = LocalEmbeddings()
 
-    def similarity_search(self, query, k=5):
-        """执行相似度搜索"""
+    def similarity_search(self, query, k=5) -> List:
+        """执行相似度搜索，返回带 metadata 的文档"""
         # 生成 query 的 embedding
         query_embedding = self.embeddings.embed_query(query)
 
@@ -79,7 +80,7 @@ class SimpleFAISSRetriever:
         # 获取文档内容
         docs = []
         for idx in indices[0]:
-            if idx < 0:  # FAISS 返回 -1 表示没有找到足够的结果
+            if idx < 0:
                 continue
             doc_id = self.index_to_docstore_id.get(idx)
             if doc_id and doc_id in self.docstore:
@@ -88,101 +89,189 @@ class SimpleFAISSRetriever:
         return docs
 
 
-# 加载已保存的 FAISS 向量存储
-# 注意：向量库已离线构建，此处仅演示加载流程
-# 实际使用的 embedding 模型与 FAISS 索引创建时保持一致
+# ============== 加载向量库 ==============
+
 def load_vectorstore():
-    """加载向量存储，带错误处理"""
+    """加载混合向量库（PDF + Wiki）"""
     try:
-        # 优先尝试使用简单检索器（避免 langchain 兼容性问题）
         return SimpleFAISSRetriever("faiss_index")
     except Exception as e:
-        print(f"⚠️ 使用 SimpleFAISSRetriever 失败：{e}，尝试重新创建索引...")
+        print(f"⚠️ 加载向量库失败：{e}")
         raise
+
 
 vectorstore = load_vectorstore()
 
 
-def rewrite_query(question: str) -> str:
-    """重写查询以提高语义搜索效果
+# ============== 格式化上下文 ==============
 
-    添加相关术语、同义词和更具体的表达。
-    保持简洁但有信息量。
+def format_context(docs) -> str:
     """
-    prompt = f"""Rewrite the following question to improve semantic search.
+    格式化检索结果，带上来源类型
+    省 token 配置：每个 chunk 最多 500 字符
+    用于构建 prompt 的 context 部分
+    """
+    context = ""
+    for i, doc in enumerate(docs):
+        source = doc.metadata.get("source", "unknown")
+        doc_type = doc.metadata.get("type", "raw")
+        # 省 token：限制每个 chunk 最多 500 字符
+        content = doc.page_content[:500]
+        context += f"[{i+1}] Source Type: {doc_type}, Source: {source}\n{content}\n\n"
+    return context
 
-Add related terms, synonyms, and more specific expressions.
-Keep it concise but informative.
 
-Original question:
-{question}
+# ============== 检索结果处理 ==============
 
-Rewritten query:"""
+def format_sources(docs) -> List[dict]:
+    """
+    格式化检索结果为 sources 列表，用于前端显示
+    包含来源类型信息
+    """
+    sources_list = []
+    for i, doc in enumerate(docs):
+        ref_num = i + 1
+        source_info = {
+            "id": ref_num,
+            "content": doc.page_content.strip(),
+            "preview": doc.page_content[:150].strip().replace("\n", " "),
+            "source": doc.metadata.get("source", "unknown"),
+            "type": doc.metadata.get("type", "raw")
+        }
+        if len(source_info["preview"]) > 150:
+            source_info["preview"] += "..."
+        sources_list.append(source_info)
+    return sources_list
 
-    response = dashscope.Generation.call(
-        model="qwen-plus",
-        prompt=prompt,
-        api_key=DASHSCOPE_API_KEY,
-        temperature=0
-    )
 
-    if response.status_code == HTTPStatus.OK:
-        return response.output.text.strip()
-    else:
-        # 如果重写失败，返回原始问题
-        if DEBUG:
-            print(f"⚠️ Query 重写失败，使用原始问题")
-        return question
-
+# ============== 翻译函数 ==============
 
 def translate_to_chinese(text: str) -> str:
-    """将英文资料翻译成中文"""
-    prompt = f"请把以下内容翻译成中文：\n\n{text}"
+    """
+    将英文资料翻译成中文
+    省 token 配置：暂时关闭翻译，直接用原文
+    """
+    # 省 token：跳过翻译，直接返回原文
+    return text
 
-    response = dashscope.Generation.call(
-        model="qwen-plus",
-        prompt=prompt,
-        api_key=DASHSCOPE_API_KEY,
-        temperature=0
-    )
 
-    if response.status_code == HTTPStatus.OK:
-        return response.output.text.strip()
-    else:
-        # 如果翻译失败，返回原文
-        if DEBUG:
-            print(f"⚠️ 翻译失败，返回原文")
-        return text
+# ============== Query Rewrite（统一检索语言） ==============
 
+def rewrite_query_to_chinese(query: str) -> str:
+    """
+    将英文 query 重写为中文（统一检索语言）
+    只有当 query 包含英文时才调用
+    """
+    # 检查是否包含英文字母
+    import re
+    if not re.search(r'[a-zA-Z]', query):
+        # 纯中文，不需要重写
+        return query
+
+    # 判断是否是短问题（单词数 <= 5）
+    words = query.split()
+    if len(words) > 5:
+        return query  # 长句子，不重写
+
+    prompt = f"""把下面的机器学习相关问题翻译成中文，只输出翻译结果：
+
+问题：{query}
+
+翻译：
+"""
+
+    try:
+        response = dashscope.Generation.call(
+            model="qwen-plus",
+            prompt=prompt,
+            api_key=DASHSCOPE_API_KEY,
+            temperature=0
+        )
+
+        if response.status_code == HTTPStatus.OK:
+            translated = response.output.text.strip()
+            # 清理可能的前缀
+            if translated.startswith("翻译："):
+                translated = translated[3:].strip()
+            return translated
+        else:
+            return query
+    except Exception:
+        return query  # 失败时返回原文
+
+
+def rewrite_query_bilingual(query: str) -> str:
+    """
+    中英一起喂给检索（高级版）
+    例如：What is classification? → What is classification? 什么是分类？
+
+    好处：
+    - 不丢英文信息
+    - 中文也能命中 wiki
+    """
+    # 检查是否包含英文字母
+    import re
+    if not re.search(r'[a-zA-Z]', query):
+        # 纯中文，直接返回
+        return query
+
+    # 判断是否是短问题（单词数 <= 5）
+    words = query.split()
+    if len(words) > 5:
+        # 长句子，只返回原文
+        return query
+
+    prompt = f"""把下面的机器学习相关问题翻译成中文，只输出翻译结果：
+
+问题：{query}
+
+翻译：
+"""
+
+    try:
+        response = dashscope.Generation.call(
+            model="qwen-plus",
+            prompt=prompt,
+            api_key=DASHSCOPE_API_KEY,
+            temperature=0
+        )
+
+        if response.status_code == HTTPStatus.OK:
+            translated = response.output.text.strip()
+            # 清理可能的前缀
+            if translated.startswith("翻译："):
+                translated = translated[3:].strip()
+            # 中英一起喂给检索
+            return f"{query} {translated}"
+        else:
+            return query
+    except Exception:
+        return query  # 失败时返回原文
+
+
+# ============== Fallback 机制 ==============
 
 def ask_fallback(question: str, fallback_reason: str = "检索资料不足") -> dict:
-    """Fallback 机制：当检索不到资料时，用模型自身知识回答
-
-    设计目的：在 retrieval failure 场景下切换为模型知识回答，
-    避免因为检索不到资料而无法回答或直接拒答。
-
-    Args:
-        question: 用户问题
-        fallback_reason: 说明为什么使用 fallback
-
-    Returns:
-        dict: 包含 answer 和 fallback 标记的字典
+    """
+    Fallback 机制：当检索不到资料时，用模型自身知识回答
+    弱容错：如果资料不完全匹配，可以基于已有内容做合理解释
     """
     if DEBUG:
         print(f"⚠️ 触发 fallback 机制：{fallback_reason}")
 
-    prompt = f"""你是一个机器学习助教，检索资料中没有找到相关内容。
+    prompt = f"""你是一个机器学习助教。资料不足时，可以基于你的知识进行合理补充。
 
-但你可以基于自己的知识来回答这个问题。请注意：
-1. 必须全部使用中文回答
-2. 开头先说明"检索资料中没有相关信息，但我可以基于已有知识解释："
-3. 然后给出清晰、准确的解释
-4. 如果确实不确定，也要诚实说明
+规则：
+1. 不要编造不存在的概念
+2. 回答要清晰、结构化
+3. 对于定义类问题，尽量简洁
+4. 对于"what is / 什么是"类问题：只给核心定义，不要展开推导
 
 问题：
 {question}
 
-请用中文回答："""
+回答：
+"""
 
     response = dashscope.Generation.call(
         model="qwen-plus",
@@ -196,7 +285,7 @@ def ask_fallback(question: str, fallback_reason: str = "检索资料不足") -> 
         answer = response.output.text
         return {
             "answer": answer,
-            "sources": [],  # 没有检索来源
+            "sources": [],
             "doc_count": 0,
             "fallback_used": True
         }
@@ -211,117 +300,193 @@ def ask_fallback(question: str, fallback_reason: str = "检索资料不足") -> 
         }
 
 
-# 定义 RAG 查询函数（带引用来源）
-def ask_rag(question, k=5, return_sources=True):
-    """基于向量搜索结果回答问题，并标注引用来源（带 fallback 机制）
+# ============== RAG 核心函数 ==============
+
+def ask_rag(question, vectorstore):
+    """
+    基于向量搜索结果回答问题（从 PDF + Wiki 混合库检索）
 
     Args:
         question: 用户问题
-        k: 检索文档数量
-        return_sources: 是否返回来源列表
+        vectorstore: 向量库
 
     Returns:
-        dict: 包含 answer 和 sources 的字典
+        tuple: (answer, docs) 回答和检索到的文档
     """
-    # Step 1: 重写查询以提高检索效果
-    new_query = rewrite_query(question)
+    # 中英一起喂给检索（高级版）
+    rewritten_query = rewrite_query_bilingual(question)
+    if rewritten_query != question:
+        print(f"\nQuery 重写：{question} → {rewritten_query}")
 
-    # === 调试代码：显示检索结果 ===
-    # 修复：使用 search 方法避免 filter 兼容性问题
-    if DEBUG:
-        print("\n=== ORIGINAL QUERY ===")
-        print(question)
-        print("\n=== REWRITTEN QUERY ===")
-        print(new_query)
+    # 智能 k 值：定义类问题 k=3，比较类 k=8，其他 k=6
+    q = rewritten_query.lower()
+    is_definition = q.startswith("what is") or q.startswith("什么是") or q.startswith("定义")
+    is_compare = "compare" in q or "对比" in q or "比较" in q or "vs" in q or "difference" in q
 
-        # 使用 vectorstore 的 search 方法，type="similarity" 避免 filter 问题
-        docs = vectorstore.similarity_search(new_query, k=k)
-
-        print("\n=== RETRIEVED DOCS ===")
-        for i, doc in enumerate(docs):
-            print(f"\n--- Doc {i+1} ---")
-            print(doc.page_content[:300])
+    if is_definition:
+        candidates = vectorstore.similarity_search(rewritten_query, k=3)
+    elif is_compare:
+        candidates = vectorstore.similarity_search(rewritten_query, k=8)
     else:
-        # 使用 vectorstore 的 search 方法，type="similarity" 避免 filter 问题
-        docs = vectorstore.similarity_search(new_query, k=k)
-    # ===========================
+        candidates = vectorstore.similarity_search(rewritten_query, k=6)
 
-    # Step 1: 判断"检索是否靠谱"
-    # 判断 1: 没有检索到任何文档
+    # 检查 1：打印候选池
+    print("\n=== 候选池 ===")
+    for i, d in enumerate(candidates):
+        print(f"{i+1} {d.metadata.get('type')} {d.metadata.get('source')}")
+
+    # 优先选 wiki：按类型分离
+    wiki_docs = [d for d in candidates if d.metadata.get("type") == "wiki"]
+    raw_docs = [d for d in candidates if d.metadata.get("type") == "raw_pdf"]
+
+    # 强制"只取最相关 wiki"：按 score 排序
+    wiki_docs = sorted(wiki_docs, key=lambda x: x.metadata.get("score", 0), reverse=True)
+
+    docs = []
+
+    # 比较类问题：拿 2 个 wiki；否则只拿 1 个
+    if is_compare:
+        docs.extend(wiki_docs[:2])
+    else:
+        if wiki_docs:
+            docs.append(wiki_docs[0])
+
+    # 非比较类问题：1 个 raw
+    if not is_compare and raw_docs:
+        docs.append(raw_docs[0])
+
+    # 剩下的位置补 raw（不再补 wiki）
+    remaining = raw_docs[1:]
+    docs.extend(remaining[:2])
+
+    # 检查 2：打印最终 docs
+    print("\n=== 最终送入模型的 docs ===")
+    for i, d in enumerate(docs):
+        print(f"{i+1} {d.metadata.get('type')} {d.metadata.get('source')}")
+
+    # 格式化上下文（省 token：每个 doc 最多 600 字符）
+    context = "\n\n".join([doc.page_content[:600] for doc in docs])
+
+    # 判断检索质量
     if len(docs) == 0:
-        return ask_fallback(question, "暂无相关检索资料")
+        return ask_fallback(question, "暂无相关检索资料"), []
 
-    # 判断 2: 检索到的文档太短或质量差
-    # 说明：总长度小于 100 可能意味着检索到的内容不够充分
     total_content_len = sum(len(doc.page_content) for doc in docs)
     if total_content_len < 100:
-        return ask_fallback(question, "检索资料内容过少")
+        return ask_fallback(question, "检索资料内容过少"), []
 
-    # 实际检索到的文档数量
-    actual_count = len(docs)
+    # 省 token：跳过翻译，直接用 context
 
-    # 构建来源列表（完整内容，用于显示）
-    sources_list = []
-    for i, doc in enumerate(docs):
-        ref_num = i + 1
-        source_info = {
-            "id": ref_num,
-            "content": doc.page_content.strip(),
-            "preview": doc.page_content[:150].strip().replace("\n", " ")
-        }
-        if len(source_info["preview"]) > 150:
-            source_info["preview"] += "..."
-        sources_list.append(source_info)
-
-    # 构建带引用编号的上下文（用于 prompt）
-    context_parts = []
-    for src in sources_list:
-        context_parts.append(f"[{src['id']}] {src['content']}")
-    context = "\n\n".join(context_parts)
-
-    # 先翻译 context 为中文（方案 2：更稳定）
-    context_cn = translate_to_chinese(context)
-
-    # 优化后的 prompt - 带 fallback 机制
-    prompt = f"""你是一个机器学习助教，请根据提供的资料回答问题。
+    # 构建 prompt（优化版）
+    if is_compare:
+        prompt = f"""你是一个机器学习助教，请基于检索到的资料回答问题。
 
 规则：
-1. 必须全部使用中文回答（不能出现英文句子）
-2. 如果资料是英文，请翻译后再回答
-3. 优先使用资料内容
-4. 可以进行合理补充解释
-5. 如果资料不足，可以补充自己的知识，但要说明
+1. 优先使用提供的资料
+2. 回答要清晰、结构化
+3. 比较类问题请列出两者的异同点（可以用表格或分点）
+4. 如果资料不完整，可以基于你的知识进行合理补充
 
 资料：
-{context_cn}
+{context}
 
 问题：
 {question}
 
-请用中文回答："""
+回答：
+"""
+    else:
+        prompt = f"""你是一个机器学习助教，请基于检索到的资料回答问题。
 
-    # 使用 DashScope 调用通义千问模型，设置 temperature=0 保证稳定性
+规则：
+1. 优先使用提供的资料
+2. 如果资料不完整，可以基于你的知识进行合理补充
+3. 不要编造不存在的概念
+4. 回答要清晰、结构化
+5. 对于定义类问题，尽量简洁
+
+对于"what is / 什么是"类问题：
+- 只给核心定义
+- 不要展开推导或复杂公式
+
+资料：
+{context}
+
+问题：
+{question}
+
+回答：
+"""
+
     response = dashscope.Generation.call(
         model="qwen-plus",
         prompt=prompt,
         api_key=DASHSCOPE_API_KEY,
-        temperature=0.1,  # 低温度，更稳定
+        temperature=0
+    )
+
+    if response.status_code == HTTPStatus.OK:
+        return response.output.text, docs
+    else:
+        return f"请求失败：{response.code} - {response.message}", docs
+
+
+# ============== 旧版 ask_rag 兼容（可选删除） ==============
+
+def ask_rag_old(question, k=5):
+    """旧版 ask_rag，保留用于兼容（省 token 简化版）"""
+    # 检索（减少 k 值）
+    docs = vectorstore.similarity_search(question, k=k)
+
+    if len(docs) == 0:
+        return ask_fallback(question, "暂无相关检索资料")
+
+    total_content_len = sum(len(doc.page_content) for doc in docs)
+    if total_content_len < 100:
+        return ask_fallback(question, "检索资料内容过少")
+
+    # 格式化来源（带类型）
+    sources_list = format_sources(docs)
+
+    # 构建上下文（省 token：限制每个 chunk 500 字符）
+    context_parts = []
+    for src in sources_list:
+        content = src['content'][:500]  # 限制长度
+        context_parts.append(f"[{src['id']}] {content}")
+    context = "\n\n".join(context_parts)
+    # 省 token：跳过翻译
+
+    prompt = f"""你是机器学习助教。优先根据资料回答。
+如果资料部分相关，可以合理总结。用中文回答。
+
+资料：
+{context}
+
+问题：
+{question}
+
+回答：
+"""
+
+    response = dashscope.Generation.call(
+        model="qwen-plus",
+        prompt=prompt,
+        api_key=DASHSCOPE_API_KEY,
+        temperature=0.1,
         max_tokens=500
     )
 
     if response.status_code == HTTPStatus.OK:
         answer = response.output.text
-        result = {
+        return {
             "answer": answer,
             "sources": sources_list,
-            "doc_count": actual_count,
-            "fallback_used": False  # 标记是否使用了 fallback
+            "doc_count": len(docs),
+            "fallback_used": False
         }
-        return result
     else:
         if DEBUG:
             print(f"❌ 请求失败:")
             print(f"   状态码：{response.status_code}")
-            print(f"   错误代码：{response.code}")
             print(f"   错误信息：{response.message}")
         return None
