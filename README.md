@@ -97,11 +97,20 @@ pdf_ai_project/
 ```
 ## ▶️ How to Run
 
- Step 1: Generate wiki knowledge python build_wiki.py  
- 
- Step 2: Build vector database python build_vectorstore.py
- 
- Step 3: Launch app streamlit run app.py
+```bash
+# 1. install dependencies
+pip install -r requirements.txt
+
+# 2. build wiki
+python build_wiki.py
+
+# 3. build vector DB
+python build_vectorstore.py
+
+# 4. run app
+streamlit run app.py
+
+```
 
 ## 📊 Example Capabilities
 
