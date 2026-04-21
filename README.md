@@ -71,15 +71,17 @@ Fallback: allow controlled knowledge completion
 
 ## 🏗️ System Architecture
 
+### 🏗️ System Architecture
+
 ```mermaid
-graph TD
-    A[User Query] --> B[Query Rewrite (EN/CN)]
-    B --> C[Vector Search (FAISS)]
+flowchart TD
+    A[User Query] --> B[Query Rewrite]
+    B --> C[Vector Search]
     C --> D[Controlled Retrieval]
     D --> E[LLM Generation]
     E --> F[Structured Answer]
-User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Retrieval → LLM Generation → Structured Answer
 ```
+
 
 ## 📂 Project Structure
 ```bash
