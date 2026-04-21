@@ -83,21 +83,13 @@ User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Re
 
 ## 📂 Project Structure
 pdf_ai_project/
-
 ├── raw/                    # Original PDFs
-
 ├── wiki/                   # Structured knowledge base
-
 ├── faiss_index/            # Vector database
-
 ├── build_wiki.py           # Generate wiki pages
-
 ├── build_vectorstore.py    # Build vector DB
-
 ├── rag.py                  # Retrieval + generation logic
-
 ├── app.py                  # Streamlit UI
-
 └── .env                    # API keys
 
 ## ▶️ How to Run
