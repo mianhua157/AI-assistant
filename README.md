@@ -13,6 +13,7 @@ Unlike basic RAG pipelines, this system introduces:
 - Query Rewriting (EN ↔ CN)
 - Task-aware Generation (Definition vs Comparison)
 
+## 🚀 Key Features
 
 ### 1️⃣ Hybrid Knowledge Base
 
@@ -23,21 +24,30 @@ Unlike basic RAG pipelines, this system introduces:
 
 ### 2️⃣ Structured Wiki Generation
 
-```text
-User Query → Query Rewrite → Retrieval → (Fallback Check) → LLM Generation → Answer
-```
+Each concept is converted into a structured markdown page with:
 
+- Definition
+- Training Process
+- Prediction Process
+- Common Methods
+- Relationships
 
-## 📁 Project Structure
+👉 Improves retrieval alignment and answer quality
 
-```
-pdf_ai_project/
-├── app.py                # Streamlit frontend
-├── rag.py                # Core RAG logic
-├── rebuild_faiss.py      # Rebuild vector index
-├── requirements.txt
-├── faiss_index/
-└── README.md
+### 3️⃣ Controlled Retrieval Pipeline (Core Innovation)
+
+Instead of naive top-k retrieval:
+
+- Query Rewrite
+English → Chinese / bilingual query
+- Dynamic k
+Definition: k=3
+Comparison: k=8
+- Document Selection
+Definition → 1 wiki + optional raw
+Comparison → 2 wiki + raw supplement
+
+👉 Enables precision + coverage balance
 ```
 
 ---
