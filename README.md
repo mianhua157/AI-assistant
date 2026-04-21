@@ -71,41 +71,66 @@ Fallback: allow controlled knowledge completion
 
 ## 🏗️ System Architecture
 
+```mermaid
+graph TD
+    A[User Query] --> B[Query Rewrite (EN/CN)]
+    B --> C[Vector Search (FAISS)]
+    C --> D[Controlled Retrieval]
+    D --> E[LLM Generation]
+    E --> F[Structured Answer]
 User Query → Query Rewrite (EN/CN) → Vector Search (FAISS) → Controlled Retrieval → LLM Generation → Structured Answer
+```
 
 ## 📂 Project Structure
-pdf_ai_project/
-├── raw/                    # Original PDFs
-├── wiki/                   # Structured knowledge base
-├── faiss_index/            # Vector database
-├── build_wiki.py           # Generate wiki pages
-├── build_vectorstore.py    # Build vector DB
-├── rag.py                  # Retrieval + generation logic
-├── app.py                  # Streamlit UI
-└── .env                    # API keys
+fileTree
+    pdf_ai_project/
+        raw/            # Original PDFs
+        wiki/           # Structured knowledge base
+        faiss_index/    # Vector database
+        build_wiki.py   # Generate wiki pages
+        build_vectorstore.py # Build vector DB
+        rag.py          # Retrieval + generation logic
+        app.py          # Streamlit UI
+        .env            # API keys
 
 ## ▶️ How to Run
- Step 1: Generate wiki knowledge python build_wiki.py  \\
- Step 2: Build vector database python build_vectorstore.py//
+
+ Step 1: Generate wiki knowledge python build_wiki.py  
+ 
+ Step 2: Build vector database python build_vectorstore.py
+ 
  Step 3: Launch app streamlit run app.py
 
 ## 📊 Example Capabilities
+
 ✔ Definition questions
+
 ✔ Concept comparison
+
 ✔ Cross-language queries
+
 ✔ Structured explanations
 
 ## 💡 Highlights
+
 Hybrid retrieval improves answer accuracy
+
 Controlled pipeline avoids irrelevant context
+
 Task-aware generation improves readability
+
 Engineering-focused optimization (token, latency)
 
 ## 🧠 Future Improvements
+
 Reranker integration (e.g. cross-encoder)
+
 Better source filtering
+
 Multi-hop reasoning
+
 Evaluation metrics (EM / F1)
 
 ## 📬 Contact
+
 1572408266@qq.com
