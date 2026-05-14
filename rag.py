@@ -14,6 +14,7 @@ import numpy as np
 from dotenv import load_dotenv
 
 from coverage_checker import check_coverage
+from embeddings_utils import DEFAULT_EMBEDDING_MODEL, load_sentence_transformer
 from intent_router import IntentResult, route_intent
 from prompts import select_prompt
 from retrieval_executor import execute_retrieval_plan, normalize_doc_type
@@ -33,18 +34,9 @@ def get_dashscope_api_key() -> str:
 
 
 class LocalEmbeddings:
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
         try:
-            from sentence_transformers import SentenceTransformer
-
-            print("Loading embedding model from local cache if available...")
-            try:
-                self.model = SentenceTransformer(model_name, local_files_only=True)
-            except TypeError:
-                self.model = SentenceTransformer(model_name)
-            except Exception:
-                print("Local cache not found. Falling back to the default loader...")
-                self.model = SentenceTransformer(model_name)
+            self.model = load_sentence_transformer(model_name)
         except Exception as exc:
             raise RuntimeError(f"Failed to load local embedding model: {exc}") from exc
 
@@ -163,6 +155,23 @@ def rewrite_query_bilingual(query: str) -> str:
     return f"{query} {translated}"
 
 
+def _prepend_retrieval_query_variant(
+    queries: list[str],
+    rewritten_query: str,
+    original_question: str,
+) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    for candidate in (rewritten_query, original_question, *queries):
+        value = candidate.strip()
+        if value and value not in seen:
+            seen.add(value)
+            ordered.append(value)
+
+    return ordered
+
+
 def format_sources(docs: list[Any]) -> list[dict[str, Any]]:
     sources = []
     for i, doc in enumerate(docs, start=1):
@@ -259,6 +268,7 @@ def _build_result(
     *,
     answer: str,
     intent_result: IntentResult,
+    retrieval_query_input: str,
     plan: RetrievalPlan,
     docs: list[Any],
     coverage: dict[str, Any],
@@ -272,6 +282,7 @@ def _build_result(
         "fallback_used": fallback_used,
         "intent": intent_result.intent,
         "intent_reason": intent_result.reason,
+        "retrieval_query_input": retrieval_query_input,
         "queries": plan.queries,
         "plan": plan.to_dict(),
         "coverage": coverage,
@@ -282,7 +293,9 @@ def _build_result(
 def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -> dict[str, Any]:
     retriever = vectorstore or load_vectorstore()
     intent_result = route_intent(question)
+    rewritten_query = rewrite_query_bilingual(question)
     plan = create_retrieval_plan(question, intent_result)
+    plan.queries = _prepend_retrieval_query_variant(plan.queries, rewritten_query, question)
     execution = execute_retrieval_plan(plan, retriever)
     docs = execution.docs
 
@@ -294,6 +307,7 @@ def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -
         result["plan"] = plan.to_dict()
         result["coverage"] = coverage
         result["execution_trace"] = execution.trace
+        result["retrieval_query_input"] = rewritten_query
         result["queries"] = plan.queries
         return result
 
@@ -301,6 +315,7 @@ def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -
         return _build_result(
             answer=build_coverage_refusal(question, intent_result.intent, coverage_report.reason),
             intent_result=intent_result,
+            retrieval_query_input=rewritten_query,
             plan=plan,
             docs=docs,
             coverage=coverage,
@@ -318,6 +333,7 @@ def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -
         result["plan"] = plan.to_dict()
         result["coverage"] = coverage
         result["execution_trace"] = execution.trace
+        result["retrieval_query_input"] = rewritten_query
         result["queries"] = plan.queries
         return result
 
@@ -329,6 +345,7 @@ def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -
     return _build_result(
         answer=answer,
         intent_result=intent_result,
+        retrieval_query_input=rewritten_query,
         plan=plan,
         docs=docs,
         coverage=coverage,
