@@ -1,95 +1,64 @@
 import streamlit as st
-import os
-import re
 
-# 检查环境变量
-if not os.getenv("DASHSCOPE_API_KEY"):
-    st.error("❌ 请设置环境变量 DASHSCOPE_API_KEY")
-    st.info("💡 设置方法：\n\n- Windows (PowerShell): `$env:DASHSCOPE_API_KEY=\"sk-your-key\"`\n- Linux/Mac: `export DASHSCOPE_API_KEY=\"sk-your-key\"`\n\n或者复制 `.env.example` 为 `.env` 并填入你的 API Key。")
-    st.stop()
+from rag import ask_rag, load_vectorstore, rewrite_query_bilingual
 
-from rag import ask_rag
 
-# 页面配置
 st.set_page_config(
     page_title="机器学习 RAG 问答系统",
     page_icon="📚",
-    layout="wide"
+    layout="wide",
 )
 
-# 标题和说明
 st.title("📚 机器学习 RAG 问答系统")
-st.caption("一个基于课程讲义资料的机器学习 RAG 问答系统，支持英文资料检索与中文回答。")
-st.info("💡 Loading embedding model, first run may take a while...")
+st.caption("基于 PDF + Wiki 混合知识库的课程助教")
 
-# 侧边栏 - 示例问题
-st.sidebar.markdown("**示例问题：**")
-st.sidebar.markdown("- What is regression?")
-st.sidebar.markdown("- What is classification?")
-st.sidebar.markdown("- What is overfitting?")
-st.sidebar.markdown("- What is k-nearest neighbor?")
-st.sidebar.markdown("- What is decision tree?")
-
-# 缓存字典 - 对同一个问题做缓存
-if "cache" not in st.session_state:
-    st.session_state.cache = {}
-
-
-def extract_keywords(question: str) -> list:
-    """从问题中提取关键词用于高亮"""
-    # 简单实现：提取英文单词（长度>3 的）
-    words = re.findall(r'\b[a-zA-Z]{4,}\b', question.lower())
-    # 去除常见停用词
-    stopwords = {'what', 'this', 'that', 'with', 'from', 'have', 'been', 'would', 'could'}
-    return [w for w in words if w not in stopwords]
+with st.sidebar:
+    st.header("使用说明")
+    st.markdown(
+        """
+        - 支持中英文提问
+        - 英文短问题会自动补充中文检索
+        - 示例：
+          - What is classification?
+          - 什么是回归？
+          - Compare classification and regression
+        """
+    )
 
 
-def highlight_content(content: str, keywords: list) -> str:
-    """高亮内容中的关键词"""
-    highlighted = content
-    for keyword in keywords:
-        # 不区分大小写替换，用**加粗标记
-        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
-        highlighted = pattern.sub(f'**{keyword}**', highlighted)
-    return highlighted
+@st.cache_resource
+def get_vectorstore():
+    return load_vectorstore()
 
 
-# 主界面 - 输入框
-question = st.text_input("请输入你的问题：", placeholder="e.g., What is classification?")
+question = st.text_input("请输入你的问题：")
 
-# 处理回答
 if question:
-    # 检查缓存
-    if question in st.session_state.cache:
-        result = st.session_state.cache[question]
-        st.info("⚡ 从缓存加载")
-    else:
-        with st.spinner("正在检索资料并生成回答..."):
-            result = ask_rag(question)
+    rewritten = rewrite_query_bilingual(question)
+    if rewritten != question:
+        st.info(f"检索改写：`{rewritten}`")
 
-        if result:
-            # 存入缓存
-            st.session_state.cache[question] = result
+    try:
+        vectorstore = get_vectorstore()
+    except Exception as exc:
+        st.error(f"向量库加载失败：{exc}")
+        st.info("请先运行 `python build_vectorstore.py` 构建本地索引。")
+        st.stop()
 
-    if result:
-        # 检查是否使用了 fallback 机制
-        if result.get("fallback_used", False):
-            st.warning("⚠️ 检索资料中没有相关内容，以下是基于模型已有知识的回答")
+    with st.spinner("正在检索资料并生成回答..."):
+        result = ask_rag(question, vectorstore)
 
-        # 显示回答
-        st.subheader("✅ 回答")
-        st.write(result["answer"])
+    if result.get("fallback_used"):
+        st.warning("未检索到足够相关的课程资料，以下回答部分依赖模型已有知识。")
 
-        # 查看参考资料（可折叠）
-        if result.get("sources"):
-            # 提取关键词用于高亮
-            keywords = extract_keywords(question)
+    st.subheader("回答")
+    st.write(result["answer"])
 
-            with st.expander("📚 查看参考资料"):
-                for src in result["sources"]:
-                    st.write(f"**来源 {src['id']}:**")
-                    # 高亮关键词后显示
-                    highlighted = highlight_content(src["content"], keywords)
-                    st.markdown(highlighted)
-        elif result.get("fallback_used", False):
-            st.info("💡 本次回答没有检索到相关资料，完全基于模型知识生成")
+    if result.get("sources"):
+        with st.expander("参考资料"):
+            for source in result["sources"]:
+                st.markdown(f"**来源 {source['id']}**")
+                st.write("类型：", source.get("type", "raw"))
+                st.write("文件：", source.get("source", "unknown"))
+                st.write(source.get("content", "")[:500])
+                st.markdown("---")
