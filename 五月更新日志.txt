@@ -1,0 +1,204 @@
+【2026-05-14｜Intent-aware RAG 第一阶段升级】
+
+1. 新增意图路由层
+- 新建 intent_router.py
+- 引入 7 类问题意图：
+  definition / comparison / summary / quiz / diagnosis / study_plan / general_qa
+- 采用规则匹配而非一开始就调用大模型，保证第一阶段稳定可控
+- 增补了口语化 quiz 表达的匹配，例如“帮我出3道题”“帮我出几道题”
+
+2. 新增策略配置层
+- 新建 intent_config.py
+- 为不同 intent 配置不同的 top_k / fetch_k / answer_style
+- 不再让所有问题共用一套固定检索参数
+
+3. 新增 Prompt 选择层
+- 新建 prompts.py
+- 为 definition / comparison / summary / quiz / diagnosis / study_plan / general_qa 分别编写独立 prompt
+- 实现 select_prompt(intent) 统一选择模板
+
+4. 重构 RAG 主流程
+- 重写 rag.py 的主流程
+- 现在的流程变为：
+  用户问题 -> intent_router -> 多查询构建 -> 检索 -> 去重 -> prompt 选择 -> 回答生成
+- 为 comparison / summary / quiz / diagnosis / study_plan 等问题加入更贴合任务的检索查询构建逻辑
+- 保留 fallback 机制，但让 fallback 结果也带上 intent 信息
+- 返回结构中补充：
+  intent / intent_reason / queries / doc_count / fallback_used
+
+5. 更新前端展示
+- 重写 app.py 的展示逻辑
+- 页面中新增：
+  Detected Intent
+  Retrieved Sources
+  Intent reason
+  Queries used for retrieval
+- 方便后续调试、项目演示、面试讲解
+
+6. 本地验证
+- 已通过 py_compile 语法检查：
+  intent_router.py
+  intent_config.py
+  prompts.py
+  rag.py
+  app.py
+- 已做 intent router 冒烟测试，确认常见 definition / comparison / summary / quiz / diagnosis / study_plan 路由可工作
+
+
+【2026-05-14｜一键启动脚本修复】
+
+1. 修复 run_demo.ps1
+- Python 检测逻辑改为优先验证 python，再回退到 py -3
+- 修复 Python 参数传递错误，避免进入交互式 REPL
+
+2. 修复 run_demo.bat
+- 增加失败后暂停提示，避免窗口一闪而过
+
+3. 结果
+- 双击 run_demo.bat 后可正常进入 demo 启动流程
+
+
+【2026-05-14｜文档补充】
+
+1. 更新 README.md
+- 补充 One-Click Demo Start 说明
+- 补充 run_demo.bat / run_demo.ps1 使用说明
+- 重写 README 为更干净、可读的项目说明版本
+
+
+【2026-05-14｜后续记录规则】
+
+- 从这个文件建立开始，后续每次有实质性项目更新，都继续追加记录：
+  目标
+  改动文件
+  完成内容
+  验证方式
+  可用于简历/面试表达的亮点
+
+
+【2026-05-14｜小型评测集与评测脚本】
+
+1. 新增更新日志文件
+- 新建 五月更新日志.txt
+- 用于持续记录 5 月阶段的项目迭代内容
+- 目标是服务后续：
+  项目总结
+  简历提炼
+  面试表达
+  周期性复盘
+
+2. 新增意图评测集
+- 新建 eval/intent_eval.jsonl
+- 为 7 类 intent 准备最小样例集：
+  definition / comparison / summary / quiz / diagnosis / study_plan / general_qa
+- 每条样例包含：
+  question
+  expected_intent
+  expected_behavior
+
+3. 新增本地评测脚本
+- 新建 eval_intent_router.py
+- 支持读取 JSONL 数据集并输出：
+  总样本数
+  总准确率
+  各 intent 准确率
+  错分样例及命中原因
+
+4. 这一阶段的工程价值
+- 让 intent-aware RAG 不只是“做了功能”，而是开始具备基础评测能力
+- 后续可以继续扩展成：
+  回答质量人工评分表
+  不同版本前后对比
+  面试中的实验与评估部分
+
+
+【2026-05-14｜回答质量人工评测模板】
+
+1. 新增回答质量评分标准
+- 新建 eval/answer_quality_rubric.md
+- 定义 4 个核心评分维度：
+  relevance
+  groundedness
+  completeness
+  structure and clarity
+- 每个维度采用 1 到 5 分
+
+2. 新增人工评测表模板
+- 新建 eval/answer_quality_review_template.csv
+- 用于对比：
+  fixed_rag
+  intent_aware_rag
+- 当前模板覆盖 6 类代表性问题：
+  definition / comparison / summary / quiz / diagnosis / study_plan
+
+3. 为什么这一项值得做
+- 现在项目不只是能证明“intent 分对了”
+- 还开始能证明“intent 分流后回答质量更好”
+- 这对后续简历和面试特别重要，因为可以讲：
+  我不仅改了架构，还建立了评测方法
+
+4. 当前判断
+- 这一步有必要做
+- 但暂时没必要做复杂自动打分
+- 对当前阶段来说，人工评分模板已经足够支撑：
+  项目总结
+  面试表达
+  后续版本对比
+
+
+【2026-05-14｜回答质量对比草稿生成工作流】
+
+1. 新增回答质量样例集
+- 新建 eval/answer_quality_cases.jsonl
+- 收录 6 个代表性问题，覆盖：
+  definition
+  comparison
+  summary
+  quiz
+  diagnosis
+  study_plan
+
+2. 新增回答草稿生成脚本
+- 新建 eval_generate_answer_review.py
+- 支持对每个问题同时生成：
+  baseline fixed_rag 风格回答
+  intent_aware_rag 回答
+- 自动导出：
+  eval/answer_quality_generated_review.csv
+  eval/answer_quality_generated_review.md
+
+3. 这一步的实际意义
+- 不再只是给一个空白打分表
+- 而是把“对比样例 + 两个版本回答草稿”直接准备出来
+- 后续你可以直接做人工评分，不需要再手工整理两边答案
+
+4. 对简历/面试的价值
+- 可以表述为：
+  搭建了 intent-aware RAG 的基础评估体系，不仅评估意图识别准确率，还支持对比基线系统与新系统的回答质量
+
+
+【2026-05-14｜回答质量初步人工结论】
+
+1. 已实际生成首批回答对比草稿
+- 通过 eval_generate_answer_review.py 成功生成前 2 个代表性样例的对比草稿
+- 输出文件：
+  eval/answer_quality_generated_review.csv
+  eval/answer_quality_generated_review.md
+
+2. 新增初步人工结论文件
+- 新建 eval/answer_quality_initial_findings.md
+- 当前先总结了：
+  Case 1: definition
+  Case 2: comparison
+
+3. 当前人工判断
+- 在这两个样例上，intent_aware_rag 都优于 baseline fixed_rag
+- 主要提升体现在：
+  更符合问题类型
+  结构更清晰
+  更适合课程助教场景
+
+4. 可以直接用于后续表达的点
+- 旧版系统“能回答”，但回答风格偏统一
+- 新版系统“先识别任务类型，再切换检索与 prompt”
+- 因此在定义题、对比题上，回答形式明显更贴合用户意图

@@ -4,24 +4,28 @@ from rag import ask_rag, load_vectorstore, rewrite_query_bilingual
 
 
 st.set_page_config(
-    page_title="机器学习 RAG 问答系统",
+    page_title="Machine Learning RAG Assistant",
     page_icon="📚",
     layout="wide",
 )
 
-st.title("📚 机器学习 RAG 问答系统")
-st.caption("基于 PDF + Wiki 混合知识库的课程助教")
+st.title("📚 Machine Learning RAG Assistant")
+st.caption("Intent-aware course assistant with retrieval planning and coverage checks")
 
 with st.sidebar:
-    st.header("使用说明")
+    st.header("How to use")
     st.markdown(
         """
-        - 支持中英文提问
-        - 英文短问题会自动补充中文检索
-        - 示例：
-          - What is classification?
-          - 什么是回归？
-          - Compare classification and regression
+        - Supports Chinese and English questions
+        - Short English questions may be expanded with Chinese search terms
+        - The system now plans retrieval before answering
+
+        Example questions:
+        - What is classification?
+        - classification 和 regression 有什么区别？
+        - 帮我总结这一章
+        - 帮我出 3 道复习题
+        - 资料里有没有覆盖 overfitting？
         """
     )
 
@@ -31,34 +35,70 @@ def get_vectorstore():
     return load_vectorstore()
 
 
-question = st.text_input("请输入你的问题：")
+question = st.text_input("Ask a course question:")
 
 if question:
     rewritten = rewrite_query_bilingual(question)
     if rewritten != question:
-        st.info(f"检索改写：`{rewritten}`")
+        st.info(f"Search rewrite: `{rewritten}`")
 
     try:
         vectorstore = get_vectorstore()
     except Exception as exc:
-        st.error(f"向量库加载失败：{exc}")
-        st.info("请先运行 `python build_vectorstore.py` 构建本地索引。")
+        st.error(f"Vector index failed to load: {exc}")
+        st.info("Please run `python build_vectorstore.py` first.")
         st.stop()
 
-    with st.spinner("正在检索资料并生成回答..."):
+    with st.spinner("Planning retrieval, checking coverage, and generating an answer..."):
         result = ask_rag(question, vectorstore)
 
-    if result.get("fallback_used"):
-        st.warning("未检索到足够相关的课程资料，以下回答部分依赖模型已有知识。")
+    coverage = result.get("coverage", {})
+    plan = result.get("plan", {})
 
-    st.subheader("回答")
+    meta_left, meta_mid, meta_right = st.columns(3)
+    with meta_left:
+        st.metric("Detected Intent", result.get("intent", "unknown"))
+    with meta_mid:
+        st.metric("Coverage", coverage.get("status", "unknown"))
+    with meta_right:
+        st.metric("Retrieved Sources", str(result.get("doc_count", 0)))
+
+    if result.get("intent_reason"):
+        st.caption(f"Intent reason: {result['intent_reason']}")
+
+    if coverage.get("reason"):
+        if coverage.get("can_answer", False):
+            st.success(f"Coverage check: {coverage['reason']}")
+        else:
+            st.warning(f"Coverage check: {coverage['reason']}")
+
+    st.subheader("Answer")
     st.write(result["answer"])
 
+    if result.get("queries"):
+        with st.expander("Queries used for retrieval"):
+            for query in result["queries"]:
+                st.write(f"- {query}")
+
+    if plan:
+        with st.expander("Retrieval plan"):
+            st.json(plan)
+
+    if result.get("execution_trace"):
+        with st.expander("Retrieval execution trace"):
+            st.json(result["execution_trace"])
+
     if result.get("sources"):
-        with st.expander("参考资料"):
+        with st.expander("Retrieved sources"):
             for source in result["sources"]:
-                st.markdown(f"**来源 {source['id']}**")
-                st.write("类型：", source.get("type", "raw"))
-                st.write("文件：", source.get("source", "unknown"))
-                st.write(source.get("content", "")[:500])
+                st.markdown(f"**Source {source['id']}**")
+                st.write("Type:", source.get("type", "raw"))
+                st.write("File:", source.get("source", "unknown"))
+                if source.get("page") is not None:
+                    st.write("Page:", source.get("page"))
+                if source.get("score") is not None:
+                    st.write("Score:", source.get("score"))
+                if source.get("query"):
+                    st.write("Matched by query:", source.get("query"))
+                st.write(source.get("content", "")[:600])
                 st.markdown("---")

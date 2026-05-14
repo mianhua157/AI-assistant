@@ -1,0 +1,13 @@
+question,expected_intent,system_version,relevance_1_to_5,groundedness_1_to_5,completeness_1_to_5,structure_1_to_5,hallucination_risk_yes_no,fit_intent_yes_no,notes
+"What is classification?","definition","fixed_rag","","","","","","",""
+"What is classification?","definition","intent_aware_rag","","","","","","",""
+"classification 和 regression 有什么区别？","comparison","fixed_rag","","","","","","",""
+"classification 和 regression 有什么区别？","comparison","intent_aware_rag","","","","","","",""
+"帮我总结这一章","summary","fixed_rag","","","","","","",""
+"帮我总结这一章","summary","intent_aware_rag","","","","","","",""
+"帮我出3道题","quiz","fixed_rag","","","","","","",""
+"帮我出3道题","quiz","intent_aware_rag","","","","","","",""
+"资料里有没有讲 overfitting？","diagnosis","fixed_rag","","","","","","",""
+"资料里有没有讲 overfitting？","diagnosis","intent_aware_rag","","","","","","",""
+"帮我做一个学习计划","study_plan","fixed_rag","","","","","","",""
+"帮我做一个学习计划","study_plan","intent_aware_rag","","","","","","",""

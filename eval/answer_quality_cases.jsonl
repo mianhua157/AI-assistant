@@ -1,0 +1,6 @@
+{"question": "What is classification?", "expected_intent": "definition", "review_focus": "Check whether the answer gives a clean definition instead of a long generic explanation."}
+{"question": "classification 和 regression 有什么区别？", "expected_intent": "comparison", "review_focus": "Check whether the answer explicitly compares both concepts in a structured way."}
+{"question": "帮我总结这一章", "expected_intent": "summary", "review_focus": "Check whether the answer behaves like a summary rather than a short QA response."}
+{"question": "帮我出3道题", "expected_intent": "quiz", "review_focus": "Check whether the answer generates actual course-grounded questions and explanations."}
+{"question": "资料里有没有讲 overfitting？", "expected_intent": "diagnosis", "review_focus": "Check whether the answer diagnoses coverage instead of directly answering the concept."}
+{"question": "帮我做一个学习计划", "expected_intent": "study_plan", "review_focus": "Check whether the answer gives an actionable study plan rather than a plain explanation."}

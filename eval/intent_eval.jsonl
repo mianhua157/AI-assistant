@@ -1,0 +1,21 @@
+{"question": "What is classification?", "expected_intent": "definition", "expected_behavior": "Should explain a concept definition."}
+{"question": "什么是回归？", "expected_intent": "definition", "expected_behavior": "Should explain a concept definition."}
+{"question": "解释一下 overfitting", "expected_intent": "definition", "expected_behavior": "Should explain a concept definition."}
+{"question": "classification 和 regression 有什么区别？", "expected_intent": "comparison", "expected_behavior": "Should compare two concepts."}
+{"question": "compare supervised learning and unsupervised learning", "expected_intent": "comparison", "expected_behavior": "Should compare two concepts."}
+{"question": "SVM 和 logistic regression 对比一下", "expected_intent": "comparison", "expected_behavior": "Should compare two concepts."}
+{"question": "帮我总结这一章", "expected_intent": "summary", "expected_behavior": "Should produce a structured summary."}
+{"question": "总结一下 regression 这一节", "expected_intent": "summary", "expected_behavior": "Should produce a structured summary."}
+{"question": "summarize this chapter", "expected_intent": "summary", "expected_behavior": "Should produce a structured summary."}
+{"question": "帮我出3道题", "expected_intent": "quiz", "expected_behavior": "Should generate practice questions."}
+{"question": "帮我生成5道复习题", "expected_intent": "quiz", "expected_behavior": "Should generate practice questions."}
+{"question": "quiz me on classification", "expected_intent": "quiz", "expected_behavior": "Should generate practice questions."}
+{"question": "资料里有没有讲 overfitting？", "expected_intent": "diagnosis", "expected_behavior": "Should check material coverage instead of directly answering."}
+{"question": "课程里有 coverage neural network optimization 吗？", "expected_intent": "diagnosis", "expected_behavior": "Should check material coverage instead of directly answering."}
+{"question": "为什么这个问题答不出来，是资料没覆盖吗？", "expected_intent": "diagnosis", "expected_behavior": "Should diagnose coverage or retrieval issues."}
+{"question": "帮我做一个学习计划", "expected_intent": "study_plan", "expected_behavior": "Should suggest a study roadmap."}
+{"question": "这一章我该怎么复习？", "expected_intent": "study_plan", "expected_behavior": "Should suggest a study roadmap."}
+{"question": "make me a study plan for regression", "expected_intent": "study_plan", "expected_behavior": "Should suggest a study roadmap."}
+{"question": "为什么这个模型会过拟合？", "expected_intent": "general_qa", "expected_behavior": "Should answer a normal course question."}
+{"question": "梯度下降为什么会震荡？", "expected_intent": "general_qa", "expected_behavior": "Should answer a normal course question."}
+{"question": "How does k-nearest neighbor work?", "expected_intent": "general_qa", "expected_behavior": "Should answer a normal course question."}

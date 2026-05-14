@@ -1,7 +1,6 @@
-"""
-RAG 核心逻辑：检索、问题改写与回答生成。
-"""
+from __future__ import annotations
 
+import copy
 import os
 import pickle
 import re
@@ -14,6 +13,12 @@ import faiss
 import numpy as np
 from dotenv import load_dotenv
 
+from coverage_checker import check_coverage
+from intent_router import IntentResult, route_intent
+from prompts import select_prompt
+from retrieval_executor import execute_retrieval_plan, normalize_doc_type
+from retrieval_planner import RetrievalPlan, create_retrieval_plan
+
 
 load_dotenv()
 
@@ -23,22 +28,25 @@ DEBUG = False
 def get_dashscope_api_key() -> str:
     api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        raise ValueError("请设置环境变量 DASHSCOPE_API_KEY")
+        raise ValueError("Please set DASHSCOPE_API_KEY before running the demo.")
     return api_key
 
 
 class LocalEmbeddings:
-    """使用本地 SentenceTransformer 生成 embedding。"""
-
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         try:
             from sentence_transformers import SentenceTransformer
 
-            print("Loading embedding model (may download on first run)...")
-            self.model = SentenceTransformer(model_name)
-            self.dimension = self.model.get_embedding_dimension()
+            print("Loading embedding model from local cache if available...")
+            try:
+                self.model = SentenceTransformer(model_name, local_files_only=True)
+            except TypeError:
+                self.model = SentenceTransformer(model_name)
+            except Exception:
+                print("Local cache not found. Falling back to the default loader...")
+                self.model = SentenceTransformer(model_name)
         except Exception as exc:
-            raise RuntimeError(f"加载本地 embedding 模型失败：{exc}") from exc
+            raise RuntimeError(f"Failed to load local embedding model: {exc}") from exc
 
     def embed_query(self, query: str) -> list[float]:
         embedding = self.model.encode(query, convert_to_numpy=True)
@@ -46,19 +54,17 @@ class LocalEmbeddings:
 
 
 class SimpleFAISSRetriever:
-    """简单的 FAISS 检索器。"""
-
     def __init__(self, index_path: str = "faiss_index"):
         index_file = Path(index_path) / "index.faiss"
         pkl_file = Path(index_path) / "index.pkl"
 
         if not index_file.exists() or not pkl_file.exists():
             raise FileNotFoundError(
-                f"未找到向量库文件：{index_file} 或 {pkl_file}。请先运行 python build_vectorstore.py"
+                f"Vector index files were not found at {index_file} and {pkl_file}. "
+                "Please run python build_vectorstore.py first."
             )
 
         self.index = faiss.read_index(str(index_file))
-
         with open(pkl_file, "rb") as file:
             data = pickle.load(file)
             if isinstance(data, tuple) and len(data) == 2:
@@ -69,46 +75,45 @@ class SimpleFAISSRetriever:
 
         self.embeddings = LocalEmbeddings()
 
-    def similarity_search(self, query: str, k: int = 5) -> list[Any]:
+    def _search(self, query: str, k: int) -> tuple[np.ndarray, np.ndarray]:
         query_embedding = self.embeddings.embed_query(query)
         query_embedding_np = np.array(query_embedding, dtype=np.float32).reshape(1, -1)
-
-        _, indices = self.index.search(
+        return self.index.search(
             query_embedding_np,
             k=min(k, len(self.index_to_docstore_id)),
         )
 
-        docs = []
-        for idx in indices[0]:
+    def similarity_search(self, query: str, k: int = 5) -> list[Any]:
+        distances, indices = self._search(query, k)
+        docs: list[Any] = []
+        for distance, idx in zip(distances[0], indices[0]):
             if idx < 0:
                 continue
             doc_id = self.index_to_docstore_id.get(idx)
-            if doc_id is not None and doc_id in self.docstore:
-                docs.append(self.docstore[doc_id])
-
+            if doc_id is None or doc_id not in self.docstore:
+                continue
+            doc = copy.deepcopy(self.docstore[doc_id])
+            doc.metadata = dict(getattr(doc, "metadata", {}))
+            doc.metadata["retrieval_distance"] = float(distance)
+            doc.metadata["chunk_type"] = normalize_doc_type(doc.metadata.get("type"))
+            docs.append(doc)
         return docs
+
+    def similarity_search_with_score(self, query: str, k: int = 5) -> list[tuple[Any, float]]:
+        distances, indices = self._search(query, k)
+        results: list[tuple[Any, float]] = []
+        for distance, idx in zip(distances[0], indices[0]):
+            if idx < 0:
+                continue
+            doc_id = self.index_to_docstore_id.get(idx)
+            if doc_id is None or doc_id not in self.docstore:
+                continue
+            results.append((self.docstore[doc_id], float(distance)))
+        return results
 
 
 def load_vectorstore(index_path: str = "faiss_index") -> SimpleFAISSRetriever:
     return SimpleFAISSRetriever(index_path)
-
-
-def format_sources(docs: list[Any]) -> list[dict[str, Any]]:
-    sources = []
-    for i, doc in enumerate(docs, start=1):
-        preview = doc.page_content[:150].strip().replace("\n", " ")
-        if len(preview) == 150:
-            preview += "..."
-        sources.append(
-            {
-                "id": i,
-                "content": doc.page_content.strip(),
-                "preview": preview,
-                "source": doc.metadata.get("source", "unknown"),
-                "type": doc.metadata.get("type", "raw"),
-            }
-        )
-    return sources
 
 
 def _call_generation(prompt: str, *, temperature: float = 0, max_tokens: Optional[int] = None):
@@ -127,26 +132,23 @@ def rewrite_query_to_chinese(query: str) -> str:
     if not re.search(r"[a-zA-Z]", query):
         return query
 
-    if len(query.split()) > 5:
+    if len(query.split()) > 8:
         return query
 
-    prompt = f"""把下面的机器学习相关问题翻译成中文，只输出翻译结果：
+    prompt = f"""Translate the following machine learning question into Chinese.
+Return only the translated question.
 
-问题：{query}
+Question: {query}
 
-翻译：
-"""
+Chinese:"""
 
     try:
         response = _call_generation(prompt, temperature=0)
         if response.status_code == HTTPStatus.OK:
-            translated = response.output.text.strip()
-            if translated.startswith("翻译："):
-                translated = translated[3:].strip()
-            return translated or query
+            return response.output.text.strip() or query
     except Exception:
         if DEBUG:
-            print("query 中文改写失败，回退原问题")
+            print("Failed to rewrite query to Chinese. Falling back to original query.")
 
     return query
 
@@ -155,162 +157,181 @@ def rewrite_query_bilingual(query: str) -> str:
     if not re.search(r"[a-zA-Z]", query):
         return query
 
-    if len(query.split()) > 5:
-        return query
-
     translated = rewrite_query_to_chinese(query)
     if translated == query:
         return query
     return f"{query} {translated}"
 
 
-def ask_fallback(question: str, fallback_reason: str = "检索资料不足") -> dict[str, Any]:
-    if DEBUG:
-        print(f"触发 fallback：{fallback_reason}")
+def format_sources(docs: list[Any]) -> list[dict[str, Any]]:
+    sources = []
+    for i, doc in enumerate(docs, start=1):
+        metadata = getattr(doc, "metadata", {})
+        preview = doc.page_content[:180].strip().replace("\n", " ")
+        if len(doc.page_content.strip()) > 180:
+            preview += "..."
 
-    prompt = f"""你是一个机器学习助教。课程资料不足时，可以基于已有知识做合理补充。
+        sources.append(
+            {
+                "id": i,
+                "content": doc.page_content.strip(),
+                "preview": preview,
+                "source": metadata.get("source", "unknown"),
+                "type": metadata.get("chunk_type", normalize_doc_type(metadata.get("type"))),
+                "page": metadata.get("page"),
+                "score": metadata.get("retrieval_score"),
+                "query": metadata.get("retrieval_query"),
+            }
+        )
+    return sources
 
-规则：
-1. 不要编造不存在的概念。
-2. 回答要清晰、准确、简洁。
-3. 如果资料不足，请直接承认资料覆盖有限。
-4. 对于“what is / 什么是”类问题，优先给核心定义。
 
+def build_context(docs: list[Any], limit_per_doc: int = 700) -> str:
+    context_blocks = []
+    for i, doc in enumerate(docs, start=1):
+        metadata = getattr(doc, "metadata", {})
+        source = metadata.get("source", "unknown")
+        doc_type = metadata.get("chunk_type", normalize_doc_type(metadata.get("type")))
+        score = metadata.get("retrieval_score", 0.0)
+        content = doc.page_content[:limit_per_doc]
+        context_blocks.append(
+            f"[{i}] source={source} type={doc_type} score={score}\n{content}"
+        )
+    return "\n\n".join(context_blocks)
+
+
+def build_coverage_refusal(question: str, intent: str, coverage_reason: str) -> str:
+    return (
+        "课程资料对这个问题的覆盖不足，当前不建议直接给出确定答案。\n\n"
+        f"- intent: {intent}\n"
+        f"- question: {question}\n"
+        f"- reason: {coverage_reason}\n\n"
+        "如果你愿意，我可以继续帮你：\n"
+        "1. 改写问题，让它更贴近课程资料里的表述\n"
+        "2. 仅基于已覆盖的部分给一个保守总结\n"
+        "3. 说明还缺哪类资料"
+    )
+
+
+def ask_fallback(question: str, fallback_reason: str, intent: str) -> dict[str, Any]:
+    prompt = f"""你是一个机器学习课程助教。课程资料不足时，可以基于已有知识做有限补充。
 问题：{question}
 
-回答：
-"""
+当前 intent：{intent}
+
+要求：
+1. 先明确说明课程资料覆盖不足。
+2. 再给出尽可能稳妥的解释。
+3. 不要编造不存在的课程细节。
+4. 用中文回答。"""
 
     try:
-        response = _call_generation(prompt, temperature=0.1, max_tokens=500)
+        response = _call_generation(prompt, temperature=0.1, max_tokens=600)
         if response.status_code == HTTPStatus.OK:
-            return {
-                "answer": response.output.text,
-                "sources": [],
-                "doc_count": 0,
-                "fallback_used": True,
-                "intent": "fallback",
-            }
-        answer = f"请求失败：{response.code} - {response.message}"
+            answer = response.output.text
+        else:
+            answer = f"Request failed: {response.code} - {response.message}"
     except Exception as exc:
-        answer = f"请求失败：{exc}"
+        answer = f"Request failed: {exc}"
 
     return {
         "answer": answer,
         "sources": [],
         "doc_count": 0,
         "fallback_used": True,
-        "intent": "fallback",
+        "intent": intent,
+        "intent_reason": fallback_reason,
     }
 
 
-def detect_intent(query: str) -> str:
-    normalized = query.lower()
-    if normalized.startswith("what is") or normalized.startswith("什么是") or "定义" in normalized:
-        return "definition"
-    if any(token in normalized for token in ["compare", "对比", "比较", "vs", "difference"]):
-        return "compare"
-    return "general"
+def generate_answer(question: str, docs: list[Any], intent: str) -> str:
+    prompt_template = select_prompt(intent)
+    context = build_context(docs)
+    prompt = prompt_template.format(question=question, context=context)
+
+    response = _call_generation(prompt, temperature=0, max_tokens=900)
+    if response.status_code == HTTPStatus.OK:
+        return response.output.text
+    return f"Request failed: {response.code} - {response.message}"
 
 
-def select_docs(candidates: list[Any], intent: str) -> list[Any]:
-    wiki_docs = [doc for doc in candidates if doc.metadata.get("type") == "wiki"]
-    raw_docs = [doc for doc in candidates if doc.metadata.get("type") == "raw_pdf"]
-
-    docs: list[Any] = []
-
-    if intent == "compare":
-        docs.extend(wiki_docs[:2])
-    elif wiki_docs:
-        docs.append(wiki_docs[0])
-
-    if intent != "compare" and raw_docs:
-        docs.append(raw_docs[0])
-
-    docs.extend(raw_docs[1:3])
-    return docs
-
-
-def build_prompt(question: str, docs: list[Any], intent: str) -> str:
-    context = "\n\n".join(doc.page_content[:600] for doc in docs)
-
-    if intent == "compare":
-        return f"""你是一个机器学习助教，请基于检索到的课程资料回答问题。
-
-规则：
-1. 优先使用提供的资料。
-2. 回答要清晰、结构化。
-3. 比较类问题请明确列出异同点。
-4. 如果资料不完整，可以做有限的合理补充，并说明边界。
-
-资料：
-{context}
-
-问题：{question}
-
-回答：
-"""
-
-    return f"""你是一个机器学习助教，请基于检索到的课程资料回答问题。
-
-规则：
-1. 优先使用提供的资料。
-2. 不要编造不存在的概念。
-3. 回答要清晰、结构化。
-4. 如果资料不完整，可以做有限的合理补充，并说明边界。
-5. 对于“what is / 什么是”类问题，优先给核心定义。
-
-资料：
-{context}
-
-问题：{question}
-
-回答：
-"""
-
-
-def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -> dict[str, Any]:
-    retriever = vectorstore or load_vectorstore()
-
-    rewritten_query = rewrite_query_bilingual(question)
-    intent = detect_intent(rewritten_query)
-
-    if intent == "definition":
-        candidates = retriever.similarity_search(rewritten_query, k=3)
-    elif intent == "compare":
-        candidates = retriever.similarity_search(rewritten_query, k=8)
-    else:
-        candidates = retriever.similarity_search(rewritten_query, k=6)
-
-    docs = select_docs(candidates, intent)
-
-    if not docs:
-        return ask_fallback(question, "暂无相关检索资料")
-
-    total_content_len = sum(len(doc.page_content) for doc in docs)
-    if total_content_len < 100:
-        return ask_fallback(question, "检索资料内容过少")
-
-    prompt = build_prompt(question, docs, intent)
-
-    try:
-        response = _call_generation(prompt, temperature=0)
-        if response.status_code == HTTPStatus.OK:
-            return {
-                "answer": response.output.text,
-                "sources": format_sources(docs),
-                "doc_count": len(docs),
-                "fallback_used": False,
-                "intent": intent,
-            }
-        answer = f"请求失败：{response.code} - {response.message}"
-    except Exception as exc:
-        answer = f"请求失败：{exc}"
-
+def _build_result(
+    *,
+    answer: str,
+    intent_result: IntentResult,
+    plan: RetrievalPlan,
+    docs: list[Any],
+    coverage: dict[str, Any],
+    execution_trace: list[dict[str, Any]],
+    fallback_used: bool,
+) -> dict[str, Any]:
     return {
         "answer": answer,
         "sources": format_sources(docs),
         "doc_count": len(docs),
-        "fallback_used": False,
-        "intent": intent,
+        "fallback_used": fallback_used,
+        "intent": intent_result.intent,
+        "intent_reason": intent_result.reason,
+        "queries": plan.queries,
+        "plan": plan.to_dict(),
+        "coverage": coverage,
+        "execution_trace": execution_trace,
     }
+
+
+def ask_rag(question: str, vectorstore: Optional[SimpleFAISSRetriever] = None) -> dict[str, Any]:
+    retriever = vectorstore or load_vectorstore()
+    intent_result = route_intent(question)
+    plan = create_retrieval_plan(question, intent_result)
+    execution = execute_retrieval_plan(plan, retriever)
+    docs = execution.docs
+
+    coverage_report = check_coverage(question, docs, plan)
+    coverage = coverage_report.to_dict()
+
+    if not docs:
+        result = ask_fallback(question, "No relevant material was retrieved.", intent_result.intent)
+        result["plan"] = plan.to_dict()
+        result["coverage"] = coverage
+        result["execution_trace"] = execution.trace
+        result["queries"] = plan.queries
+        return result
+
+    if plan.need_coverage_check and not coverage_report.can_answer and intent_result.intent != "diagnosis":
+        return _build_result(
+            answer=build_coverage_refusal(question, intent_result.intent, coverage_report.reason),
+            intent_result=intent_result,
+            plan=plan,
+            docs=docs,
+            coverage=coverage,
+            execution_trace=execution.trace,
+            fallback_used=False,
+        )
+
+    total_content_len = sum(len(doc.page_content) for doc in docs)
+    if total_content_len < 120 and intent_result.intent != "diagnosis":
+        result = ask_fallback(
+            question,
+            "Retrieved content was too short for a grounded answer.",
+            intent_result.intent,
+        )
+        result["plan"] = plan.to_dict()
+        result["coverage"] = coverage
+        result["execution_trace"] = execution.trace
+        result["queries"] = plan.queries
+        return result
+
+    try:
+        answer = generate_answer(question, docs, intent_result.intent)
+    except Exception as exc:
+        answer = f"Request failed: {exc}"
+
+    return _build_result(
+        answer=answer,
+        intent_result=intent_result,
+        plan=plan,
+        docs=docs,
+        coverage=coverage,
+        execution_trace=execution.trace,
+        fallback_used=False,
+    )
