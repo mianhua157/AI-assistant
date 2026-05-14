@@ -9,12 +9,26 @@ function Write-Step {
 }
 
 function Get-PythonCommand {
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        return @("py", "-3")
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        try {
+            & python --version | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return @("python")
+            }
+        }
+        catch {
+        }
     }
 
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        return @("python")
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        try {
+            & py -3 --version | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return @("py", "-3")
+            }
+        }
+        catch {
+        }
     }
 
     throw "Python 3 was not found in PATH. Please install Python first."
@@ -23,7 +37,7 @@ function Get-PythonCommand {
 function Invoke-Python {
     param(
         [string[]]$PythonCmd,
-        [string[]]$Args
+        [string[]]$PythonArgs
     )
 
     $pythonExe = $PythonCmd[0]
@@ -32,9 +46,9 @@ function Invoke-Python {
         $pythonPrefix = $PythonCmd[1..($PythonCmd.Length - 1)]
     }
 
-    & $pythonExe @pythonPrefix @Args
+    & $pythonExe @pythonPrefix @PythonArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed: $($PythonCmd -join ' ') $($Args -join ' ')"
+        throw "Command failed: $($PythonCmd -join ' ') $($PythonArgs -join ' ')"
     }
 }
 
@@ -87,24 +101,24 @@ function Ensure-Vectorstore {
     }
 
     Write-Step "Vector index not found. Building now"
-    Invoke-Python -PythonCmd $script:PythonCmd -Args @("build_vectorstore.py")
+    Invoke-Python -PythonCmd $script:PythonCmd -PythonArgs @("build_vectorstore.py")
 }
 
 
 $script:PythonCmd = Get-PythonCommand
 
 Write-Step "Checking Python"
-Invoke-Python -PythonCmd $PythonCmd -Args @("--version")
+Invoke-Python -PythonCmd $PythonCmd -PythonArgs @("--version")
 
 Write-Step "Checking API key"
 Ensure-EnvFile
 
 Write-Step "Installing dependencies"
-Invoke-Python -PythonCmd $PythonCmd -Args @("-m", "pip", "install", "-r", "requirements.txt")
+Invoke-Python -PythonCmd $PythonCmd -PythonArgs @("-m", "pip", "install", "-r", "requirements.txt")
 
 Write-Step "Checking vector index"
 Ensure-Vectorstore
 
 Write-Step "Starting Streamlit demo"
 Write-Host "The browser should open shortly." -ForegroundColor Green
-Invoke-Python -PythonCmd $PythonCmd -Args @("-m", "streamlit", "run", "app.py")
+Invoke-Python -PythonCmd $PythonCmd -PythonArgs @("-m", "streamlit", "run", "app.py")
