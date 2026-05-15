@@ -202,3 +202,80 @@
 - 旧版系统“能回答”，但回答风格偏统一
 - 新版系统“先识别任务类型，再切换检索与 prompt”
 - 因此在定义题、对比题上，回答形式明显更贴合用户意图
+
+2026-05-15｜Evaluation Agent MVP 与离线鲁棒性增强
+1. 新增统一自动评测入口
+- 新建 eval_agent.py
+- 打通评测闭环：
+  读取 eval/eval_questions.jsonl
+  批量调用 ask_rag()
+  记录 answer / sources / rewritten_query / intent / coverage / latency
+  输出 eval/runs/<timestamp>/results.jsonl
+  输出 eval/runs/<timestamp>/summary.json
+  输出 eval/runs/<timestamp>/report.md
+- report 中新增 Failure Analysis，可直接沉淀 bad case
+
+2. 新增 LLM-as-judge 适配层
+- 新建 llm_client.py
+- 新建 eval/judge_prompt.txt
+- 支持通过 --judge 触发自动评分
+- 当前评分维度包括：
+  answer_correctness
+  source_relevance
+  faithfulness
+  language_consistency
+  hallucination_risk
+
+3. 新增评测题集
+- 新建 eval/eval_questions.jsonl
+- 首版放入 12 条小规模样例，覆盖：
+  definition
+  comparison
+  summary
+  quiz
+  study_plan
+  diagnosis
+  hard_negative
+  mixed_language
+- 目标不是先堆大规模数据，而是先让 regression testing 跑通
+
+4. 提升离线环境可用性
+- 新建 embeddings_utils.py
+- 重构 rag.py / build_vectorstore.py 的 embedding 加载逻辑
+- 优先从本地 Hugging Face snapshot 或 EMBEDDING_MODEL_PATH 加载模型
+- 避免受限网络下因为 sentence-transformers 远程探测失败导致 demo 和评测直接不可用
+
+5. 强化评测稳定性
+- judge 调用失败时不再中断整批评测
+- 改为在结果中写入 Judge failed 原因，保证批量 run 能落盘
+- 更新 .gitignore，忽略 eval/runs/ 生成产物，避免临时报告进入版本库
+
+6. 更新文档
+- 更新 README.md
+- 补充 Evaluation Agent 用法：
+  python eval_agent.py --limit 5
+  python eval_agent.py --limit 5 --judge
+- 补充离线 embedding 配置说明
+
+7. 本地验证
+- 已通过 py_compile：
+  eval_agent.py
+  llm_client.py
+  rag.py
+  embeddings_utils.py
+- 已验证：
+  python eval_agent.py --limit 3
+  可正常生成 runs 目录、results.jsonl、summary.json、report.md
+- 已验证：
+  python eval_agent.py --limit 1 --judge
+  在当前 DashScope 网络受限时不会中断整批任务，而是记录 judge 错误
+
+8. 这一轮的工程价值
+- 项目从“有一些分散评测脚本”升级为“有统一入口的自动评测 agent”
+- 后续可以继续用于：
+  regression test
+  bad case accumulation
+  检索策略对比
+  LLM-as-judge 自动评分
+- 也更方便在简历和面试中表述为：
+  不仅做了 intent-aware RAG，还搭建了可扩展的评测闭环

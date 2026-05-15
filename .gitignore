@@ -23,6 +23,7 @@ faiss_index/
 # 测试和结果
 benchmark_results.json
 *.log
+eval/runs/
 
 # OS
 .DS_Store

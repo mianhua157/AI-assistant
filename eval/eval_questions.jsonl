@@ -1,0 +1,12 @@
+{"id":"easy_001","category":"definition","difficulty":"easy","question":"What is classification?","expected_intent":"definition","expected_keywords":["classification","label"],"should_use_wiki":true}
+{"id":"easy_002","category":"definition","difficulty":"easy","question":"什么是回归？","expected_intent":"definition","expected_keywords":["回归","连续"],"should_use_wiki":true}
+{"id":"easy_003","category":"definition","difficulty":"easy","question":"解释一下 overfitting","expected_intent":"definition","expected_keywords":["overfitting","泛化"],"should_use_wiki":false}
+{"id":"medium_001","category":"comparison","difficulty":"medium","question":"Compare classification and regression","expected_intent":"comparison","expected_keywords":["classification","regression"],"should_use_wiki":true}
+{"id":"medium_002","category":"comparison","difficulty":"medium","question":"classification 和 regression 有什么区别？","expected_intent":"comparison","expected_keywords":["classification","regression","区别"],"should_use_wiki":true}
+{"id":"medium_003","category":"summary","difficulty":"medium","question":"帮我总结 regression 这一节","expected_intent":"summary","expected_keywords":["regression","总结"],"should_use_wiki":false}
+{"id":"medium_004","category":"quiz","difficulty":"medium","question":"帮我出3道关于 classification 的复习题","expected_intent":"quiz","expected_keywords":["classification"],"should_use_wiki":false}
+{"id":"medium_005","category":"study_plan","difficulty":"medium","question":"make me a study plan for regression","expected_intent":"study_plan","expected_keywords":["regression","study plan"],"should_use_wiki":false}
+{"id":"hard_001","category":"diagnosis","difficulty":"hard","question":"资料里有没有讲 overfitting？","expected_intent":"diagnosis","expected_keywords":["overfitting","资料"],"should_use_wiki":false}
+{"id":"hard_002","category":"general_qa","difficulty":"hard","question":"Why is logistic regression used for classification?","expected_intent":"general_qa","expected_keywords":["logistic regression","classification"],"should_use_wiki":false}
+{"id":"hard_negative_001","category":"hard_negative","difficulty":"medium","question":"What is dropout in deep learning?","expected_intent":"definition","expected_keywords":["dropout","deep learning"],"should_use_wiki":false}
+{"id":"mixed_001","category":"mixed_language","difficulty":"medium","question":"Why logistic regression 用于分类而不是回归？","expected_intent":"general_qa","expected_keywords":["logistic regression","分类","回归"],"should_use_wiki":false}
