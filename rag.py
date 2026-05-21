@@ -4,6 +4,7 @@ import copy
 import os
 import pickle
 import re
+import unicodedata
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Optional
@@ -24,6 +25,22 @@ from retrieval_planner import RetrievalPlan, create_retrieval_plan
 load_dotenv()
 
 DEBUG = False
+
+TERM_GLOSSARY = {
+    "classification": "分类",
+    "regression": "回归",
+    "overfitting": "过拟合",
+    "underfitting": "欠拟合",
+    "decision tree": "决策树",
+    "logistic regression": "逻辑回归",
+    "naive bayes": "朴素贝叶斯",
+    "support vector machine": "支持向量机",
+    "svm": "支持向量机",
+    "k-nearest neighbor": "k近邻",
+    "knn": "k近邻",
+    "linear discriminant analysis": "线性判别分析",
+    "lda": "线性判别分析",
+}
 
 
 def get_dashscope_api_key() -> str:
@@ -120,39 +137,86 @@ def _call_generation(prompt: str, *, temperature: float = 0, max_tokens: Optiona
     return dashscope.Generation.call(**kwargs)
 
 
-def rewrite_query_to_chinese(query: str) -> str:
-    if not re.search(r"[a-zA-Z]", query):
+def _normalize_text(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).strip()
+
+
+def _translate_query(query: str, *, target_language: str) -> str:
+    normalized_query = _normalize_text(query)
+    has_english = bool(re.search(r"[a-zA-Z]", normalized_query))
+    has_chinese = bool(re.search(r"[\u4e00-\u9fff]", normalized_query))
+
+    if target_language == "zh" and not has_english:
+        return query
+    if target_language == "en" and not has_chinese:
         return query
 
-    if len(query.split()) > 8:
+    if len(normalized_query.split()) > 12:
         return query
 
-    prompt = f"""Translate the following machine learning question into Chinese.
+    language_name = "Chinese" if target_language == "zh" else "English"
+    prompt = f"""Translate the following machine learning question into {language_name}.
+Keep technical terms accurate.
 Return only the translated question.
 
-Question: {query}
+Question: {normalized_query}
 
-Chinese:"""
+Translation:"""
 
     try:
         response = _call_generation(prompt, temperature=0)
         if response.status_code == HTTPStatus.OK:
-            return response.output.text.strip() or query
+            return _normalize_text(response.output.text) or query
     except Exception:
         if DEBUG:
-            print("Failed to rewrite query to Chinese. Falling back to original query.")
+            print(f"Failed to translate query to {target_language}. Falling back to original query.")
 
     return query
 
 
-def rewrite_query_bilingual(query: str) -> str:
-    if not re.search(r"[a-zA-Z]", query):
-        return query
+def _glossary_translation(query: str, *, target_language: str) -> str:
+    normalized = _normalize_text(query)
+    lowered = normalized.lower()
+    matches: list[str] = []
 
-    translated = rewrite_query_to_chinese(query)
-    if translated == query:
-        return query
-    return f"{query} {translated}"
+    if target_language == "zh":
+        for english, chinese in TERM_GLOSSARY.items():
+            if english in lowered:
+                matches.append(chinese)
+    else:
+        for english, chinese in TERM_GLOSSARY.items():
+            if chinese in normalized:
+                matches.append(english)
+
+    if not matches:
+        return normalized
+
+    return " ".join(dict.fromkeys([normalized, *matches]))
+
+
+def rewrite_query_bilingual(query: str) -> str:
+    normalized_query = _normalize_text(query)
+    has_english = bool(re.search(r"[a-zA-Z]", normalized_query))
+    has_chinese = bool(re.search(r"[\u4e00-\u9fff]", normalized_query))
+
+    if has_english and has_chinese:
+        if has_english:
+            return _glossary_translation(normalized_query, target_language="zh")
+        return _glossary_translation(normalized_query, target_language="en")
+
+    if has_english:
+        translated = _translate_query(normalized_query, target_language="zh")
+        translated = _glossary_translation(translated, target_language="zh")
+    elif has_chinese:
+        translated = _translate_query(normalized_query, target_language="en")
+        translated = _glossary_translation(translated, target_language="en")
+    else:
+        return normalized_query
+
+    translated = _normalize_text(translated)
+    if translated == normalized_query:
+        return normalized_query
+    return f"{normalized_query} {translated}"
 
 
 def _prepend_retrieval_query_variant(

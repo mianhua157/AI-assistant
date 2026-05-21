@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -29,8 +30,13 @@ def _distance_to_score(distance: float) -> float:
     return 1.0 / (1.0 + max(distance, 0.0))
 
 
+def _normalize_text(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).lower()
+
+
 def _query_terms(text: str) -> list[str]:
-    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]+|[\u4e00-\u9fff]{2,}", text.lower())
+    normalized = _normalize_text(text)
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]+|[\u4e00-\u9fff]{2,}", normalized)
     return [token for token in tokens if len(token) > 1]
 
 
@@ -38,7 +44,7 @@ def _overlap_score(query: str, doc_text: str) -> float:
     terms = _query_terms(query)
     if not terms:
         return 0.0
-    lowered_doc = doc_text.lower()
+    lowered_doc = _normalize_text(doc_text)
     hits = sum(1 for term in terms if term in lowered_doc)
     return hits / len(terms)
 

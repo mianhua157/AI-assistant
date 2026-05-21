@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -62,6 +63,22 @@ QUESTION_STOPWORDS = {
 }
 
 
+QUESTION_PHRASE_PREFIXES = [
+    "what is",
+    "what's",
+    "meaning of",
+    "define",
+    "explain",
+    "什么是",
+    "啥是",
+    "定义",
+    "解释一下",
+    "介绍一下",
+    "资料里有没有",
+    "课程里有没有",
+]
+
+
 @dataclass
 class CoverageReport:
     status: str
@@ -77,8 +94,15 @@ class CoverageReport:
         return asdict(self)
 
 
+def _normalize_text(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).lower()
+
+
 def _extract_question_terms(question: str) -> list[str]:
-    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]+|[\u4e00-\u9fff]{2,}", question.lower())
+    normalized = _normalize_text(question)
+    for phrase in QUESTION_PHRASE_PREFIXES:
+        normalized = normalized.replace(phrase, " ")
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-]+|[\u4e00-\u9fff]{2,}", normalized)
     filtered = [token for token in tokens if len(token) > 1 and token not in QUESTION_STOPWORDS]
     seen: set[str] = set()
     deduped: list[str] = []
@@ -102,8 +126,9 @@ def check_coverage(question: str, docs: list[Any], plan: RetrievalPlan) -> Cover
             wiki_doc_count=0,
         )
 
-    terms = _extract_question_terms(question)
-    joined_content = "\n".join(doc.page_content.lower()[:1500] for doc in docs)
+    coverage_query = " ".join(plan.queries) if plan.queries else question
+    terms = _extract_question_terms(coverage_query)
+    joined_content = "\n".join(_normalize_text(doc.page_content[:1500]) for doc in docs)
     matched_terms = [term for term in terms if term in joined_content]
 
     strong_docs = [doc for doc in docs if float(doc.metadata.get("retrieval_score", 0.0)) >= plan.min_score]
