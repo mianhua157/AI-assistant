@@ -48,7 +48,7 @@ But I quickly learned an important lesson:
 This difference became the main theme of the project.
 
 ---
-
+![Basic RAG Pipeline](../assets/basic_rag_pipeline_flowchart.png)
 ## 3. Early Failure Modes
 
 The first obvious failure mode was that the system sometimes answered:
