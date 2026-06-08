@@ -47,8 +47,9 @@ But I quickly learned an important lesson:
 
 This difference became the main theme of the project.
 
----
 ![Basic RAG Pipeline](../assets/basic_rag_pipeline_flowchart.png)
+---
+
 ## 3. Early Failure Modes
 
 The first obvious failure mode was that the system sometimes answered:
@@ -271,6 +272,7 @@ Information is distributed across different formats, documents, and contexts.
 This made me pay more attention to source ranking, citation quality, and question intent.
 
 ---
+![Basic RAG Pipeline](../assets/rag_badcase_analysis_overview.png)
 
 ## 11. Badcase Analysis
 
@@ -435,3 +437,4 @@ Fluent answers are easy to produce.
 Trustworthy answers are much harder.
 
 And that is exactly what makes RAG worth studying.
+![Basic RAG Pipeline](../assets/what_makes_a_rag_system_trustworthy.png)
